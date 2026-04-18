@@ -1,0 +1,13 @@
+# Robot Framework Core
+robotframework==7.0.1
+
+# Librerías de Robot Framework
+robotframework-seleniumlibrary==6.3.0
+robotframework-requests==0.9.7
+
+# Selenium y WebDriver
+selenium==4.18.1
+webdriver-manager==4.0.1
+
+# Utilidades
+requests==2.31.0
