@@ -1,0 +1,236 @@
+ESTRUCTURA DEL PROYECTO TELCEL - ROBOT FRAMEWORK
+═══════════════════════════════════════════════════════════════
+
+telcel-master_chat_1776471737465_6pwql6gbn3u/
+│
+├── CLAUDE.md                          # Documentación completa del proyecto
+├── README.md                          # Guía de inicio rápido
+├── requirements.txt                   # Dependencias Python
+├── .gitignore                         # Archivos a ignorar en Git
+├── run_tests.sh                       # Script de ejecución de pruebas
+├── ESTRUCTURA.txt                     # Este archivo
+│
+├── tests/                             # TEST CASES (archivos .robot)
+│   │                                  # • 1 Test Case por archivo
+│   │                                  # • Tag obligatorio: PruebaGeneradaIA
+│   │                                  # • Patrón Given/When/Then
+│   │                                  # • NO contienen locators
+│   │
+│   ├── TC_032_Validacion_Oferta_Primaria_Amigo_Paguitos.robot
+│   │   └─→ Valida oferta primaria con tarifa 0, sin unidades libres ni suplementarias
+│   │
+│   ├── TC_033_Alta_Oferta_Suplementaria_Telcel_Up.robot
+│   │   └─→ Alta de Telcel Up a nivel cliente para Amigo Paguitos
+│   │
+│   ├── TC_038_Restricciones_Tramites_Postactivacion.robot
+│   │   └─→ Bloqueo de cambio número, SIM, cesión, pérdida/robo
+│   │
+│   ├── TC_039_Cambio_Ciclo_Facturacion_99.robot
+│   │   └─→ Cambio ciclo 99 solo por API, no por GUI
+│   │
+│   └── TC_067_Validar_No_Cambio_Oferta_Primaria.robot
+│       └─→ Restricción de cambio de oferta primaria en Amigo Paguitos
+│
+├── pages/                             # PAGE RESOURCES (Pattern POM)
+│   │                                  # • Variables con locators (id, name, CSS, XPath)
+│   │                                  # • Keywords específicos de página
+│   │                                  # • Append-Only: NO borrar locators existentes
+│   │
+│   ├── LoginPage.resource
+│   │   └─→ ${URL_LOGIN}, ${INPUT_USERNAME}, ${INPUT_PASSWORD}, ${BTN_LOGIN}
+│   │       Keywords: Abrir navegador, Ingresar credenciales, Verificar login
+│   │
+│   ├── OfertasPage.resource
+│   │   └─→ ${MENU_OFERTAS}, ${INPUT_BUSCAR_OFERTA}, ${INPUT_TARIFA_RENTA}
+│   │       Keywords: Navegar ofertas, Buscar oferta, Verificar tarifa cero
+│   │
+│   ├── ClientePage.resource
+│   │   └─→ ${MENU_CLIENTES}, ${BTN_SERVICIOS_ADICIONALES}, ${DDL_SELECCIONAR_SERVICIO}
+│   │       Keywords: Buscar cliente, Agregar servicio Telcel Up
+│   │
+│   ├── TramitesPage.resource
+│   │   └─→ ${MENU_TRAMITES}, ${BTN_CAMBIO_NUMERO}, ${BTN_CAMBIO_SIM}
+│   │       Keywords: Intentar trámites, Verificar restricciones
+│   │
+│   ├── FacturacionPage.resource
+│   │   └─→ ${MENU_FACTURACION}, ${DDL_NUEVO_CICLO}, ${LBL_CICLO_ACTUAL}
+│   │       Keywords: Cambiar ciclo, Verificar ciclo 99
+│   │
+│   └── SuscriptorPage.resource
+│       └─→ ${MENU_SUSCRIPTORES}, ${SECTION_VISTA_360}, ${BTN_CAMBIAR_OFERTA}
+│           Keywords: Vista 360, Verificar restricción cambio oferta
+│
+├── resources/                         # KEYWORDS Y CONFIGURACIÓN
+│   │
+│   ├── keywords.resource              # Keywords de alto nivel (BDD)
+│   │   │                              # • Reutilizables entre Test Cases
+│   │   │                              # • Combinan keywords de Page Resources
+│   │   │                              # • NO contienen locators directos
+│   │   │
+│   │   └─→ Keywords organizados por caso de prueba:
+│   │       • Login y Sesión
+│   │       • Ofertas Primarias (TC032)
+│   │       • Servicios Adicionales (TC033)
+│   │       • Restricciones Trámites (TC038)
+│   │       • Cambio Ciclo (TC039)
+│   │       • Cambio Oferta Primaria (TC067)
+│   │
+│   └── config.resource                # Configuración global
+│       └─→ ${BROWSER}, ${TIMEOUT}, ${URL_BASE}
+│           ${USUARIO_TEST}, ${PASSWORD_TEST}
+│           Datos de prueba: Cliente, Suscriptor, Cuenta
+│
+└── reports/                           # REPORTES DE EJECUCIÓN
+    │                                  # • Generados automáticamente por Robot
+    │                                  # • NO incluidos en Git
+    │
+    ├── log.html                       # Log detallado paso a paso
+    ├── report.html                    # Reporte resumido con estadísticas
+    └── output.xml                     # Salida XML para CI/CD
+
+
+REGLAS DE ORO
+═══════════════════════════════════════════════════════════════
+
+1. Page Resources son "Append-Only"
+   ✓ Agregar nuevos locators al final
+   ✗ NUNCA eliminar ni modificar locators existentes
+
+2. Prioridad de Locators
+   1º id:elemento
+   2º name:elemento
+   3º css:.clase
+   4º xpath://ruta (último recurso)
+
+3. Separación de Responsabilidades
+   • Test Cases (.robot)    → Lógica de negocio (Given/When/Then)
+   • Keywords (resource)    → Acciones reutilizables
+   • Page Resources         → Locators y keywords de página
+
+4. Tags Obligatorios
+   • PruebaGeneradaIA (en todos los Test Cases)
+   • Tags adicionales: Funcional, Ofertas, AmigoPaguitos, etc.
+
+5. Nomenclatura
+   • Variables locators:    ${MAYUSCULAS_CON_GUION}
+   • Keywords:             En Español Con Mayúsculas Iniciales
+   • Archivos Test:        TC_###_Nombre_Descriptivo.robot
+   • Archivos Page:        NombreModuloPage.resource
+
+
+FLUJO DE EJECUCIÓN
+═══════════════════════════════════════════════════════════════
+
+Test Case (.robot)
+    ↓
+Llama Keywords (keywords.resource)
+    ↓
+Llama Keywords de Página (pages/*.resource)
+    ↓
+Usa Locators (Variables en pages/*.resource)
+    ↓
+Interactúa con SeleniumLibrary
+    ↓
+Ejecuta en Navegador
+
+
+COMANDOS ÚTILES
+═══════════════════════════════════════════════════════════════
+
+# Instalar dependencias
+pip3 install -r requirements.txt
+
+# Ejecutar todos los tests
+./run_tests.sh all
+robot -d reports tests/
+
+# Ejecutar un test específico
+./run_tests.sh tc032
+robot -d reports tests/TC_032_Validacion_Oferta_Primaria_Amigo_Paguitos.robot
+
+# Ejecutar por tags
+./run_tests.sh ofertas
+robot -d reports -i PruebaGeneradaIA tests/
+robot -d reports -i Ofertas tests/
+robot -d reports -i AmigoPaguitos tests/
+
+# Validar sintaxis (dry run)
+./run_tests.sh dryrun
+robot --dryrun -d reports tests/
+
+# Ver ayuda del script
+./run_tests.sh help
+
+
+CASOS DE PRUEBA IMPLEMENTADOS
+═══════════════════════════════════════════════════════════════
+
+TC032 - Validación oferta primaria Amigo Paguitos [Medium]
+├─ Tarifa de renta = 0
+├─ Sin unidades libres
+└─ Sin ofertas suplementarias adicionales
+
+TC033 - Alta oferta suplementaria Telcel Up [Medium]
+├─ Cliente Amigo Paguitos con financiamiento
+├─ Agregar Telcel Up a nivel cliente
+└─ Verificar servicio activo
+
+TC038 - Restricciones trámites postactivación [Medium]
+├─ Bloqueo: Cambio de número
+├─ Bloqueo: Cambio de SIM
+├─ Bloqueo: Cesión de derechos
+└─ Bloqueo: Reporte pérdida/robo
+
+TC039 - Cambio ciclo facturación a 99 [Medium]
+├─ NO disponible desde GUI
+├─ SÍ disponible desde API
+└─ Verificar ciclo actualizado
+
+TC067 - Validar no cambio oferta primaria [Low]
+├─ NO disponible desde GUI
+├─ NO disponible desde API
+└─ Oferta permanece sin cambios
+
+
+ARQUITECTURA PAGE OBJECT MODEL
+═══════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────┐
+│                    Test Cases Layer                      │
+│  TC_032, TC_033, TC_038, TC_039, TC_067                 │
+│  • Lógica de negocio                                    │
+│  • Given/When/Then                                       │
+│  • NO contienen locators                                │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ↓
+┌─────────────────────────────────────────────────────────┐
+│                  Keywords Layer                          │
+│  keywords.resource                                       │
+│  • Keywords reutilizables de alto nivel                 │
+│  • Combinan múltiples keywords de página                │
+│  • NO contienen locators directos                       │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ↓
+┌─────────────────────────────────────────────────────────┐
+│                 Page Objects Layer                       │
+│  LoginPage, OfertasPage, ClientePage, etc.              │
+│  • Variables con locators (${BTN_LOGIN}, etc.)          │
+│  • Keywords específicos de página                       │
+│  • Única fuente de verdad para locators                 │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ↓
+┌─────────────────────────────────────────────────────────┐
+│               SeleniumLibrary Layer                      │
+│  Click Element, Input Text, Wait Until...               │
+│  • Interacción directa con navegador                    │
+│  • Comandos Selenium                                    │
+└─────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════
+Proyecto generado con Claude Code
+Tag: PruebaGeneradaIA
+═══════════════════════════════════════════════════════════════
