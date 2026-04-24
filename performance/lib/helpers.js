@@ -25,14 +25,16 @@ export const jsonHeaders = {
 export function httpGet(url, params = {}, expectedStatus = 200, tagName = 'GET') {
 	const res = http.get(url, { headers: jsonHeaders, ...params, tags: { name: tagName } })
 
-	const ok = check(res, {
+	const okStatus = check(res, {
 		[`${tagName} - status ${expectedStatus}`]: (r) => r.status === expectedStatus,
+	})
+	check(res, {
 		[`${tagName} - response time < 2s`]: (r) => r.timings.duration < 2000,
 	})
 
 	apiLatency.add(res.timings.duration, { endpoint: tagName })
-	apiErrorRate.add(!ok)
-	if (!ok) {
+	apiErrorRate.add(!okStatus)
+	if (!okStatus) {
 		apiErrors.add(1, { endpoint: tagName })
 	}
 

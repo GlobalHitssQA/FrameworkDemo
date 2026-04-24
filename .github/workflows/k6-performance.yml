@@ -1,21 +1,30 @@
 name: k6 Performance Tests
 
-# Este workflow ejecuta las pruebas de performance con k6.
-# Por defecto sólo corre en ejecución manual (workflow_dispatch) para no
-# alargar los tiempos del CI regular. También se dispara cuando cambian los
-# archivos relacionados con la suite de performance.
-
 on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: 'Escenario a ejecutar (smoke, load, stress, spike, soak, api, all)'
+        description: 'Escenario a ejecutar'
         required: true
         default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+          - spike
+          - soak
+          - api
+          - all
       env:
-        description: 'Entorno objetivo (dev, staging, prod)'
+        description: 'Entorno objetivo'
         required: true
         default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
   push:
     branches: [ master ]
     paths:
@@ -37,10 +46,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Install k6
         run: |
@@ -54,8 +63,8 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           K6_ENV: ${{ github.event.inputs.env }}
+          SCENARIO: ${{ github.event.inputs.scenario }}
         run: |
-          SCENARIO="${{ github.event.inputs.scenario }}"
           if [ "$SCENARIO" = "all" ]; then
             npm run k6:all
           else
