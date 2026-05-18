@@ -673,3 +673,340 @@ Validar Pantalla 360 Muestra Financiamiento Cancelado
     Should Be Equal As Strings    ${pantalla}[status_loan]    ${BES_STATUS_CANCELADO}
     Should Be Equal As Integers    ${pantalla}[parcialidadesVencidas]    0
     Dictionary Should Contain Key    ${pantalla}    trazabilidad
+
+# ═══════════════════════════════════════════════════════════════════════
+# AMPLIACIÓN APPEND-ONLY — TC001 / TC010 / TC025
+# TC001: alta financiamiento Semanal 3 meses clase SB vía AP.AG desde CAC.
+# TC010: consulta de saldo y desglose de cuotas en Vista 360 desde CAC.
+# TC025: alta con datos de cliente incompletos (esquema inválido → ESB1).
+# Modelo determinista UAT.
+# # Integración pendiente de validación con ESB BES-APAG en vivo
+# # Locators pendientes de validación con app en vivo
+# ═══════════════════════════════════════════════════════════════════════
+
+*** Variables ***
+# --- Ciclo de crédito ---
+${BES_CICLO_SEMANAL}                   SEMANAL
+${BES_CICLO_MENSUAL}                   MENSUAL
+
+# --- Trazabilidad de integración AP.AG → BES ---
+${BES_ORIGEN_APAG}                     AP.AG
+
+*** Keywords ***
+# ─────────────────────────── TC001 · Alta semanal 3m clase SB vía AP.AG ───────────────────────────
+
+Formalizar Venta Y Financiamiento Semanal En APAG
+    [Documentation]    AP.AG formaliza la venta, oferta y enganche y arma la
+    ...    solicitud de creación de préstamo semanal (cliente, préstamo y equipo).
+    [Arguments]    ${service_number}    ${imei}    ${plazo_meses}    ${clase_credito}    ${monto_equipo}
+    Should Not Be Empty    ${service_number}
+    Should Not Be Empty    ${imei}
+    Should Not Be Empty    ${clase_credito}
+    Should Be True    ${plazo_meses} > 0
+    Should Be True    ${monto_equipo} > 0
+    Set To Dictionary    ${BES_CTX}    serviceNumber=${service_number}    imei=${imei}
+    Set To Dictionary    ${BES_CTX}    plazo=${plazo_meses}    montoEquipo=${monto_equipo}
+    Configurar Clase De Credito    ${clase_credito}
+    &{cliente}=    Create Dictionary    serviceNumber=${service_number}    imei=${imei}
+    ...    nombreCliente=CLIENTE PREPAGO ${service_number}    origen=${BES_ORIGEN_APAG}
+    &{venta}=    Create Dictionary    status=${200}    formalizada=${TRUE}
+    ...    cicloCredito=${BES_CICLO_SEMANAL}    plazoMeses=${plazo_meses}    claseCredito=${clase_credito}
+    Set To Dictionary    ${BES_CTX}    ventaFormalizada=${venta}    datosCliente=${cliente}
+
+Disparar Transferencia Creacion Prestamo Semanal A BES
+    [Documentation]    AP.AG invoca la API de creación de préstamo de BES con el
+    ...    REQUEST bien formado. BES valida esquema y responde ESB0 sin reintento.
+    ${clase}=    Get From Dictionary    ${BES_CTX}    claseCredito
+    ${plazo}=    Get From Dictionary    ${BES_CTX}    plazo
+    ${monto_equipo}=    Get From Dictionary    ${BES_CTX}    montoEquipo
+    ${sn}=    Get From Dictionary    ${BES_CTX}    serviceNumber
+    ${es_semanal}=    Es Clase Credito Semanal    ${clase}
+    ${plazo_valido}=    Es Plazo Valido    ${plazo}
+    ${esquema_valido}=    Evaluate    ${es_semanal} and ${plazo_valido} and ${monto_equipo} > 0
+    IF    not ${esquema_valido}
+        &{rechazo}=    Create Dictionary    status=${400}    responseCode=${BES_RESPUESTA_ERROR_VALID}
+        ...    reintentoAplicado=${FALSE}    errorMessage=Esquema de request inválido para préstamo semanal
+        Set To Dictionary    ${BES_CTX}    respuestaCreacion=${rechazo}
+        RETURN
+    END
+    ${semanas}=    Evaluate    int(round(${plazo} * ${BES_FACTOR_SEMANAS_POR_MES}))
+    ${monto_financiar}=    Evaluate    round(${monto_equipo} * (1 + ${BES_TASA_IMPUESTO}), 2)
+    @{parcialidades}=    Calcular Parcialidades Semanales    ${monto_financiar}    ${semanas}
+    ${credito_id}=    Set Variable    CR-${clase}-${sn}
+    &{creacion}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+    ...    reintentoAplicado=${FALSE}    creditoId=${credito_id}
+    Set To Dictionary    ${BES_CTX}    respuestaCreacion=${creacion}
+    ${cliente}=    Get From Dictionary    ${BES_CTX}    datosCliente
+    &{prestamo}=    Create Dictionary    creditoId=${credito_id}    claseCredito=${clase}
+    ...    cicloCredito=${BES_CICLO_SEMANAL}    plazoMeses=${plazo}    numParcialidades=${semanas}
+    ...    montoFinanciar=${monto_financiar}    parcialidades=${parcialidades}
+    ...    calendarioCobranza=${parcialidades}    subscriberId=SUB-${sn}
+    ...    installmentPlanInstId=IPI-${sn}    billcycleTypeId=${BES_BILLCYCLE_SEMANAL}
+    ...    status=${BES_STATUS_ACTIVO}    datosCliente=${cliente}    imei=${cliente}[imei]
+    ...    controladoPorBES=${TRUE}
+    Set To Dictionary    ${BES_CTX}    prestamoSemanalAlta=${prestamo}
+
+Validar Esquema Y Respuesta ESB0 Sin Reintento
+    [Documentation]    Verifica que BES validó el esquema y respondió el código
+    ...    de ejecución exitosa sin aplicar reintento.
+    [Arguments]    ${codigo_esperado}
+    ${resp}=    Get From Dictionary    ${BES_CTX}    respuestaCreacion
+    Should Be Equal As Integers    ${resp}[status]    200
+    Should Be Equal As Strings    ${resp}[responseCode]    ${codigo_esperado}
+    Should Not Be True    ${resp}[reintentoAplicado]
+    Dictionary Should Contain Key    ${resp}    creditoId
+
+Validar Correspondencia Ciclo Semanal Plazo Y Clase
+    [Documentation]    BES-CRM valida que el ciclo Semanal y el plazo correspondan
+    ...    a la clase de crédito y que el préstamo quede en estatus Activo.
+    [Arguments]    ${clase_esperada}    ${plazo_esperado}
+    ${p}=    Get From Dictionary    ${BES_CTX}    prestamoSemanalAlta
+    ${es_semanal}=    Es Clase Credito Semanal    ${clase_esperada}
+    Should Be True    ${es_semanal}
+    Should Be Equal As Strings    ${p}[claseCredito]    ${clase_esperada}
+    Should Be Equal As Strings    ${p}[cicloCredito]    ${BES_CICLO_SEMANAL}
+    Should Be Equal As Integers    ${p}[plazoMeses]    ${plazo_esperado}
+    ${plazo_valido}=    Es Plazo Valido    ${p}[plazoMeses]
+    Should Be True    ${plazo_valido}
+    Should Be Equal As Strings    ${p}[status]    ${BES_STATUS_ACTIVO}
+
+Verificar Registro Prestamo Desglose Y Calendario
+    [Documentation]    Verifica el registro del préstamo, el desglose de cuotas
+    ...    semanales y el calendario de cobranza controlado por BES, así como los
+    ...    datos de cliente y equipo.
+    ${p}=    Get From Dictionary    ${BES_CTX}    prestamoSemanalAlta
+    @{parc}=    Set Variable    ${p}[parcialidades]
+    Length Should Be    ${parc}    ${p}[numParcialidades]
+    Dictionary Should Contain Key    ${p}    calendarioCobranza
+    Should Be True    ${p}[controladoPorBES]
+    ${cli}=    Get From Dictionary    ${p}    datosCliente
+    ${sn}=    Get From Dictionary    ${BES_CTX}    serviceNumber
+    Should Be Equal As Strings    ${cli}[serviceNumber]    ${sn}
+    ${imei}=    Get From Dictionary    ${BES_CTX}    imei
+    Should Be Equal As Strings    ${p}[imei]    ${imei}
+    ${suma}=    Set Variable    ${0}
+    FOR    ${c}    IN    @{parc}
+        Dictionary Should Contain Key    ${c}    dueDate
+        Dictionary Should Contain Key    ${c}    status
+        Should Be True    ${c}[amount] > 0
+        ${suma}=    Evaluate    round(${suma} + ${c}[amount], 2)
+    END
+    Should Be Equal As Numbers    ${suma}    ${p}[montoFinanciar]
+
+Consultar Pantalla 360 Alta Semanal Desde CAC
+    [Documentation]    Consulta el financiamiento en la pantalla 360 de BES vía CAC.
+    ${p}=    Get From Dictionary    ${BES_CTX}    prestamoSemanalAlta
+    ${sn}=    Get From Dictionary    ${BES_CTX}    serviceNumber
+    &{pantalla}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+    ...    serviceNumber=${sn}    creditoId=${p}[creditoId]    claseCredito=${p}[claseCredito]
+    ...    numParcialidades=${p}[numParcialidades]    parcialidades=${p}[parcialidades]
+    ...    status_loan=${p}[status]
+    Set To Dictionary    ${BES_CTX}    pantalla360Alta=${pantalla}
+    RETURN    ${pantalla}
+
+Validar Pantalla 360 Despliega Datos Cliente Cuotas Y Estatus
+    [Documentation]    Verifica que la pantalla 360 despliega datos del cliente,
+    ...    desglose de cuotas, fechas de vencimiento y estatus del préstamo.
+    ${pantalla}=    Get From Dictionary    ${BES_CTX}    pantalla360Alta
+    Should Be Equal As Integers    ${pantalla}[status]    200
+    Should Be Equal As Strings    ${pantalla}[responseCode]    ${BES_RESPUESTA_EXITO}
+    Dictionary Should Contain Key    ${pantalla}    serviceNumber
+    Dictionary Should Contain Key    ${pantalla}    parcialidades
+    @{parc}=    Set Variable    ${pantalla}[parcialidades]
+    Should Be True    len(${parc}) > 0
+    FOR    ${c}    IN    @{parc}
+        Dictionary Should Contain Key    ${c}    dueDate
+        Dictionary Should Contain Key    ${c}    status
+    END
+    Should Be Equal As Strings    ${pantalla}[status_loan]    ${BES_STATUS_ACTIVO}
+
+# ─────────────────────────── TC010 · Consulta saldo y desglose en 360 ───────────────────────────
+
+Registrar Financiamiento Activo Transferido Desde APAG
+    [Documentation]    Registra un financiamiento activo creado con al menos el
+    ...    enganche acreditado, con la información transferida desde AP.AG.
+    [Arguments]    ${service_number}    ${imei}    ${plazo_meses}    ${clase_credito}    ${monto_financiado}    ${monto_enganche}
+    Should Not Be Empty    ${service_number}
+    Should Not Be Empty    ${imei}
+    Should Be True    ${monto_financiado} > 0
+    Should Be True    ${monto_enganche} >= 0
+    Set To Dictionary    ${BES_CTX}    serviceNumber=${service_number}    imei=${imei}
+    Set To Dictionary    ${BES_CTX}    numeroTelefonico=${service_number}
+    Configurar Clase De Credito    ${clase_credito}
+    ${num}=    Evaluate    int(round(${plazo_meses} * ${BES_FACTOR_SEMANAS_POR_MES}))
+    @{parc}=    Calcular Parcialidades Semanales    ${monto_financiado}    ${num}
+    Set To Dictionary    ${parc}[0]    status=${BES_ESTATUS_CUOTA_PAGADA}
+    ${pagado_cuotas}=    Set Variable    ${parc}[0][amount]
+    ${monto_pagado}=    Evaluate    round(${monto_enganche} + ${pagado_cuotas}, 2)
+    ${saldo_actual}=    Evaluate    round(${monto_financiado} - ${pagado_cuotas}, 2)
+    &{apag}=    Create Dictionary    serviceNumber=${service_number}    imei=${imei}
+    ...    claseCredito=${clase_credito}    plazoMeses=${plazo_meses}    numParcialidades=${num}
+    ...    montoFinanciado=${monto_financiado}    montoEnganche=${monto_enganche}
+    &{prestamo}=    Create Dictionary    creditoId=CR-${clase_credito}-${service_number}
+    ...    claseCredito=${clase_credito}    plazoMeses=${plazo_meses}    numParcialidades=${num}
+    ...    montoFinanciado=${monto_financiado}    montoEnganche=${monto_enganche}
+    ...    montoPagado=${monto_pagado}    saldoActual=${saldo_actual}    parcialidades=${parc}
+    ...    subscriberId=SUB-${service_number}    installmentPlanInstId=IPI-${service_number}
+    ...    billcycleTypeId=${BES_BILLCYCLE_SEMANAL}    status=${BES_STATUS_ACTIVO}
+    ...    serviceNumber=${service_number}    imei=${imei}
+    Set To Dictionary    ${BES_CTX}    prestamoActivo360=${prestamo}    datosAPAG=${apag}
+
+Buscar Cliente Y Abrir Pantalla 360 BES Desde CAC
+    [Documentation]    Busca al cliente y abre la pantalla 360 de BES desde CAC;
+    ...    se despliega la información general del crédito.
+    ${p}=    Get From Dictionary    ${BES_CTX}    prestamoActivo360
+    &{pantalla}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+    ...    serviceNumber=${p}[serviceNumber]    creditoId=${p}[creditoId]
+    ...    claseCredito=${p}[claseCredito]    status_loan=${p}[status]
+    ...    subscriberId=${p}[subscriberId]    installmentPlanInstId=${p}[installmentPlanInstId]
+    Set To Dictionary    ${BES_CTX}    pantalla360Saldo=${pantalla}
+    RETURN    ${pantalla}
+
+Consultar Saldo Vigente Del Financiamiento
+    [Documentation]    Consulta el saldo vigente: saldo actual, monto financiado
+    ...    y monto pagado.
+    ${p}=    Get From Dictionary    ${BES_CTX}    prestamoActivo360
+    &{saldo}=    Create Dictionary    status=${200}    saldoActual=${p}[saldoActual]
+    ...    montoFinanciado=${p}[montoFinanciado]    montoPagado=${p}[montoPagado]
+    Set To Dictionary    ${BES_CTX}    saldoFinanciamiento=${saldo}
+    RETURN    ${saldo}
+
+Consultar Desglose De Cuotas Del Financiamiento
+    [Documentation]    Consulta el desglose de cuotas del financiamiento.
+    ${p}=    Get From Dictionary    ${BES_CTX}    prestamoActivo360
+    &{desglose}=    Create Dictionary    status=${200}    numParcialidades=${p}[numParcialidades]
+    ...    parcialidades=${p}[parcialidades]
+    Set To Dictionary    ${BES_CTX}    desgloseCuotas360=${desglose}
+    RETURN    ${desglose}
+
+Validar Informacion General Credito Desplegada
+    [Documentation]    Verifica que la pantalla 360 despliega la información
+    ...    general del crédito asociada al cliente.
+    ${pantalla}=    Get From Dictionary    ${BES_CTX}    pantalla360Saldo
+    Should Be Equal As Integers    ${pantalla}[status]    200
+    Should Be Equal As Strings    ${pantalla}[responseCode]    ${BES_RESPUESTA_EXITO}
+    Dictionary Should Contain Key    ${pantalla}    creditoId
+    Dictionary Should Contain Key    ${pantalla}    claseCredito
+    Should Be Equal As Strings    ${pantalla}[status_loan]    ${BES_STATUS_ACTIVO}
+
+Validar Saldo Monto Financiado Y Pagado
+    [Documentation]    Verifica que el saldo actual, el monto financiado y el
+    ...    monto pagado sean correctos y consistentes.
+    ${s}=    Get From Dictionary    ${BES_CTX}    saldoFinanciamiento
+    ${p}=    Get From Dictionary    ${BES_CTX}    prestamoActivo360
+    Should Be Equal As Integers    ${s}[status]    200
+    Should Be True    ${s}[montoFinanciado] > 0
+    Should Be True    ${s}[montoPagado] >= 0
+    Should Be True    ${s}[saldoActual] >= 0
+    Should Be True    ${s}[montoPagado] >= ${p}[montoEnganche]
+    ${dif}=    Evaluate    round(${s}[montoFinanciado] - ${s}[saldoActual], 2)
+    Should Be True    ${dif} >= 0
+
+Validar Desglose Numero Importe Fechas Y Estatus
+    [Documentation]    Verifica número de parcialidades, importe por cuota,
+    ...    fechas de vencimiento y estatus del préstamo.
+    ${d}=    Get From Dictionary    ${BES_CTX}    desgloseCuotas360
+    @{parc}=    Set Variable    ${d}[parcialidades]
+    Length Should Be    ${parc}    ${d}[numParcialidades]
+    @{estatus_validos}=    Create List
+    ...    ${BES_ESTATUS_CUOTA_PAGADA}    ${BES_ESTATUS_CUOTA_PENDIENTE}    ${BES_ESTATUS_CUOTA_RETRASADA}
+    FOR    ${c}    IN    @{parc}
+        Dictionary Should Contain Key    ${c}    secuencia
+        Dictionary Should Contain Key    ${c}    amount
+        Dictionary Should Contain Key    ${c}    dueDate
+        Dictionary Should Contain Key    ${c}    status
+        List Should Contain Value    ${estatus_validos}    ${c}[status]
+        Should Be True    ${c}[amount] > 0
+    END
+
+Validar Consistencia Datos Contra APAG
+    [Documentation]    Verifica que los datos de cliente, préstamo y equipo
+    ...    coinciden con la información transferida por AP.AG.
+    ${apag}=    Get From Dictionary    ${BES_CTX}    datosAPAG
+    ${p}=    Get From Dictionary    ${BES_CTX}    prestamoActivo360
+    Should Be Equal As Strings    ${p}[serviceNumber]    ${apag}[serviceNumber]
+    Should Be Equal As Strings    ${p}[imei]    ${apag}[imei]
+    Should Be Equal As Strings    ${p}[claseCredito]    ${apag}[claseCredito]
+    Should Be Equal As Integers    ${p}[numParcialidades]    ${apag}[numParcialidades]
+    Should Be Equal As Numbers    ${p}[montoFinanciado]    ${apag}[montoFinanciado]
+
+# ─────────────────────────── TC025 · Datos de cliente incompletos → ESB1 ───────────────────────────
+
+Formalizar Venta En APAG Con Datos Cliente Incompletos
+    [Documentation]    AP.AG formaliza la venta y genera el REQUEST de creación de
+    ...    préstamo OMITIENDO campos obligatorios de la información del cliente.
+    [Arguments]    ${imei}    ${plazo_meses}    ${monto_equipo}    ${clase_credito}
+    Should Not Be Empty    ${imei}
+    Set To Dictionary    ${BES_CTX}    imei=${imei}    plazo=${plazo_meses}
+    Set To Dictionary    ${BES_CTX}    montoEquipo=${monto_equipo}
+    Configurar Clase De Credito    ${clase_credito}
+    @{faltantes}=    Create List    serviceNumber    nombreCliente    curp
+    &{cliente}=    Create Dictionary    serviceNumber=${EMPTY}    nombreCliente=${EMPTY}
+    ...    curp=${EMPTY}    imei=${imei}
+    &{request}=    Create Dictionary    sendBy=${BES_ORIGEN_APAG}    user=USR-APAG
+    ...    token=TKN-UAT    clientId=CLI-UAT    cliente=${cliente}    plazoMeses=${plazo_meses}
+    ...    montoEquipo=${monto_equipo}    claseCredito=${clase_credito}
+    Set To Dictionary    ${BES_CTX}    requestCreacion=${request}    camposObligatorios=${faltantes}
+
+Enviar Request Creacion Prestamo Con Datos Incompletos A BES
+    [Documentation]    BES recibe e intenta validar el esquema del mensaje; al
+    ...    detectar el incumplimiento de obligatoriedad responde ESB1 sin reintento
+    ...    y propaga el error hacia AP.AG.
+    ${request}=    Get From Dictionary    ${BES_CTX}    requestCreacion
+    ${cliente}=    Get From Dictionary    ${request}    cliente
+    @{obligatorios}=    Get From Dictionary    ${BES_CTX}    camposObligatorios
+    @{detectados}=    Create List
+    FOR    ${campo}    IN    @{obligatorios}
+        ${valor}=    Get From Dictionary    ${cliente}    ${campo}
+        IF    '${valor}' == ''
+            Append To List    ${detectados}    ${campo}
+        END
+    END
+    ${esquema_valido}=    Evaluate    len(${detectados}) == 0
+    IF    ${esquema_valido}
+        &{resp}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+        ...    reintentoAplicado=${FALSE}    camposFaltantes=${detectados}
+    ELSE
+        &{resp}=    Create Dictionary    status=${400}    responseCode=${BES_RESPUESTA_ERROR_VALID}
+        ...    reintentoAplicado=${FALSE}    camposFaltantes=${detectados}
+        ...    errorMessage=Campos obligatorios de cliente faltantes o incompletos
+    END
+    Set To Dictionary    ${BES_CTX}    respuestaCreacion=${resp}
+    &{apag}=    Create Dictionary    recibido=${TRUE}    responseCode=${resp}[responseCode]
+    ...    ventaFormalizadaEnBES=${esquema_valido}    camposFaltantes=${detectados}
+    Set To Dictionary    ${BES_CTX}    respuestaAPAG=${apag}
+
+Validar Respuesta Error Esquema ESB1 Sin Reintento
+    [Documentation]    Verifica que BES respondió error de esquema del mensaje de
+    ...    entrada sin aplicar reintento.
+    [Arguments]    ${codigo_esperado}
+    ${resp}=    Get From Dictionary    ${BES_CTX}    respuestaCreacion
+    Should Be Equal As Integers    ${resp}[status]    400
+    Should Be Equal As Strings    ${resp}[responseCode]    ${codigo_esperado}
+    Should Not Be Equal As Strings    ${resp}[responseCode]    ${BES_RESPUESTA_EXITO}
+    Should Not Be True    ${resp}[reintentoAplicado]
+
+Validar No Se Crea Prestamo Ni Registro Parcial
+    [Documentation]    Verifica que BES no crea financiamiento ni genera registro
+    ...    parcial.
+    ${resp}=    Get From Dictionary    ${BES_CTX}    respuestaCreacion
+    Dictionary Should Not Contain Key    ${resp}    creditoId
+    Dictionary Should Not Contain Key    ${resp}    loanId
+    ${tiene_alta}=    Run Keyword And Return Status
+    ...    Dictionary Should Contain Key    ${BES_CTX}    prestamoSemanalAlta
+    Should Not Be True    ${tiene_alta}
+    ${tiene_activo}=    Run Keyword And Return Status
+    ...    Dictionary Should Contain Key    ${BES_CTX}    prestamoActivo360
+    Should Not Be True    ${tiene_activo}
+
+Validar Error Propagado Hacia APAG Con Campos Faltantes
+    [Documentation]    Verifica que la respuesta de error se propaga hacia AP.AG
+    ...    indicando los campos obligatorios faltantes y que la venta no se
+    ...    formaliza en BES.
+    [Arguments]    ${codigo_esperado}
+    ${apag}=    Get From Dictionary    ${BES_CTX}    respuestaAPAG
+    Should Be True    ${apag}[recibido]
+    Should Be Equal As Strings    ${apag}[responseCode]    ${codigo_esperado}
+    Should Not Be True    ${apag}[ventaFormalizadaEnBES]
+    @{faltantes}=    Set Variable    ${apag}[camposFaltantes]
+    Should Be True    len(${faltantes}) > 0

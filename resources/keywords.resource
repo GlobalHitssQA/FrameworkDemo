@@ -263,3 +263,115 @@ El Estatus Del Financiamiento Cambia A Cancelado
 La Pantalla 360 Muestra El Financiamiento Cancelado Con Trazabilidad
     [Documentation]    Verifica el financiamiento cancelado con trazabilidad.
     Validar Pantalla 360 Muestra Financiamiento Cancelado
+
+# ═══════════════════════════════════════════════════════════════════════
+# AMPLIACIÓN APPEND-ONLY — Orquestación TC001 / TC010 / TC025
+# Keywords Given/When/Then en español. Sin selectores ni endpoints:
+# delegan en BesPage / Vista360Page.
+# ═══════════════════════════════════════════════════════════════════════
+
+# ─────────────────────────── GIVEN ───────────────────────────
+
+Existe Un Financiamiento Activo Transferido Desde AP.AG
+    [Documentation]    Registra un financiamiento activo con enganche acreditado
+    ...    e información transferida desde AP.AG.
+    [Arguments]    ${service_number}    ${imei}    ${plazo}    ${clase_credito}    ${monto_financiado}    ${monto_enganche}
+    Registrar Financiamiento Activo Transferido Desde APAG
+    ...    ${service_number}    ${imei}    ${plazo}    ${clase_credito}    ${monto_financiado}    ${monto_enganche}
+
+# ─────────────────────────── WHEN ───────────────────────────
+
+AP.AG Formaliza La Venta Y El Financiamiento Semanal
+    [Documentation]    AP.AG formaliza la venta, oferta y enganche del
+    ...    financiamiento semanal.
+    [Arguments]    ${service_number}    ${imei}    ${plazo}    ${clase_credito}    ${monto_equipo}
+    Formalizar Venta Y Financiamiento Semanal En APAG
+    ...    ${service_number}    ${imei}    ${plazo}    ${clase_credito}    ${monto_equipo}
+
+AP.AG Dispara La Transferencia De Creación De Préstamo Hacia BES
+    [Documentation]    AP.AG invoca la API de creación de préstamo de BES.
+    Disparar Transferencia Creacion Prestamo Semanal A BES
+
+Se Consulta El Financiamiento En La Pantalla 360 De BES Desde CAC
+    [Documentation]    Consulta el financiamiento en la pantalla 360 de BES vía CAC.
+    Consultar Pantalla 360 Alta Semanal Desde CAC
+
+Se Busca Al Cliente Y Se Abre La Pantalla 360 De BES Desde CAC
+    [Documentation]    Busca al cliente y abre la pantalla 360 de BES desde CAC.
+    Buscar Cliente Y Abrir Pantalla 360 BES Desde CAC
+
+Se Consulta El Saldo Vigente Del Financiamiento
+    [Documentation]    Consulta el saldo vigente del financiamiento.
+    Consultar Saldo Vigente Del Financiamiento
+
+Se Consulta El Desglose De Cuotas Del Financiamiento
+    [Documentation]    Consulta el desglose de cuotas del financiamiento.
+    Consultar Desglose De Cuotas Del Financiamiento
+
+AP.AG Formaliza La Venta Y Genera El REQUEST Con Datos De Cliente Incompletos
+    [Documentation]    AP.AG genera el REQUEST de creación de préstamo omitiendo
+    ...    campos obligatorios del cliente.
+    [Arguments]    ${imei}    ${plazo}    ${monto_equipo}    ${clase_credito}
+    Formalizar Venta En APAG Con Datos Cliente Incompletos
+    ...    ${imei}    ${plazo}    ${monto_equipo}    ${clase_credito}
+
+BES Recibe E Intenta Validar El Esquema Del Mensaje De Entrada
+    [Documentation]    BES recibe el REQUEST e intenta validar el esquema.
+    Enviar Request Creacion Prestamo Con Datos Incompletos A BES
+
+# ─────────────────────────── THEN ───────────────────────────
+
+BES Recibe Valida El Esquema Y Responde Sin Reintento
+    [Documentation]    Verifica que BES validó el esquema y respondió el código
+    ...    esperado sin reintento.
+    [Arguments]    ${codigo}
+    Validar Esquema Y Respuesta ESB0 Sin Reintento    ${codigo}
+
+BES-CRM Valida La Correspondencia Del Ciclo Semanal Plazo Y Clase De Crédito
+    [Documentation]    Verifica que el ciclo Semanal y el plazo correspondan a la
+    ...    clase de crédito y que el préstamo quede Activo.
+    [Arguments]    ${clase_credito}    ${plazo}
+    Validar Correspondencia Ciclo Semanal Plazo Y Clase    ${clase_credito}    ${plazo}
+
+El Préstamo Queda Registrado Con Desglose De Cuotas Y Calendario De Cobranza
+    [Documentation]    Verifica el registro del préstamo, desglose de cuotas y
+    ...    calendario de cobranza controlado por BES.
+    Verificar Registro Prestamo Desglose Y Calendario
+
+La Pantalla 360 Despliega Datos Del Cliente Cuotas Y Estatus
+    [Documentation]    Verifica que la pantalla 360 despliega datos del cliente,
+    ...    desglose de cuotas, fechas de vencimiento y estatus.
+    Validar Pantalla 360 Despliega Datos Cliente Cuotas Y Estatus
+
+La Información General Del Crédito Se Despliega En La Pantalla 360
+    [Documentation]    Verifica que se despliega la información general del crédito.
+    Validar Informacion General Credito Desplegada
+
+El Saldo El Monto Financiado Y El Monto Pagado Son Correctos
+    [Documentation]    Verifica que el saldo, monto financiado y monto pagado son
+    ...    correctos.
+    Validar Saldo Monto Financiado Y Pagado
+
+El Desglose Muestra Número Importe Fechas Y Estatus
+    [Documentation]    Verifica número de parcialidades, importe, fechas de
+    ...    vencimiento y estatus.
+    Validar Desglose Numero Importe Fechas Y Estatus
+
+Los Datos Son Consistentes Con La Información Transferida Por AP.AG
+    [Documentation]    Verifica que los datos coinciden con lo transferido por AP.AG.
+    Validar Consistencia Datos Contra APAG
+
+BES Responde Error De Esquema Sin Reintento
+    [Documentation]    Verifica que BES respondió error de esquema sin reintento.
+    [Arguments]    ${codigo}
+    Validar Respuesta Error Esquema ESB1 Sin Reintento    ${codigo}
+
+BES No Crea El Financiamiento Ni Genera Registro Parcial
+    [Documentation]    Verifica que no se crea préstamo ni registro parcial.
+    Validar No Se Crea Prestamo Ni Registro Parcial
+
+La Respuesta De Error Se Propaga Hacia AP.AG Con Los Campos Faltantes
+    [Documentation]    Verifica que el error se propaga hacia AP.AG con los campos
+    ...    obligatorios faltantes.
+    [Arguments]    ${codigo}
+    Validar Error Propagado Hacia APAG Con Campos Faltantes    ${codigo}
