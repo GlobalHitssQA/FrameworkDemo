@@ -375,3 +375,171 @@ La Respuesta De Error Se Propaga Hacia AP.AG Con Los Campos Faltantes
     ...    obligatorios faltantes.
     [Arguments]    ${codigo}
     Validar Error Propagado Hacia APAG Con Campos Faltantes    ${codigo}
+
+# ═══════════════════════════════════════════════════════════════════════
+# AMPLIACIÓN APPEND-ONLY — Orquestación TC005 / TC016 / TC051
+# Activación Chip Express Offer ID 1013, Cambio de SIM Prepago $50 y
+# Bloqueo 1 SIM por IMEI. Sin selectores ni endpoints: delegan en
+# BesPage / Vista360Page.
+# ═══════════════════════════════════════════════════════════════════════
+
+# ─────────────────────────── GIVEN ───────────────────────────
+
+El Cliente Prepago Activo Está Listo Para Cambio De SIM
+    [Documentation]    Registra al cliente Prepago activo con MSISDN, ICCID
+    ...    actual y plan vigente.
+    [Arguments]    ${msisdn}    ${iccid_anterior}    ${plan_vigente}
+    Registrar Cliente Prepago Activo Para Cambio SIM    ${msisdn}    ${iccid_anterior}    ${plan_vigente}
+
+Existe Un IMEI Con Una SIM Amigo Kit Ya Facturada
+    [Documentation]    Registra en BES el histórico de un IMEI con una SIM
+    ...    Amigo Kit previamente facturada y asociada.
+    [Arguments]    ${imei}    ${iccid_previa}    ${sku_previa}
+    Registrar IMEI Con SIM Previa Facturada    ${imei}    ${iccid_previa}    ${sku_previa}
+
+# ─────────────────────────── WHEN ───────────────────────────
+
+Se Busca El Producto Chip Express En CAC Por SKU
+    [Documentation]    Busca el producto Chip Express por SKU en CAC y obtiene
+    ...    su visualización desde catálogo UPC sincronizado en BES.
+    [Arguments]    ${sku}
+    Buscar Producto Chip Express En CAC Por SKU    ${sku}
+
+Se Asigna El Offer ID Al SKU Del Chip Express
+    [Documentation]    Asigna el Offer ID al SKU del Chip Express en BES.
+    [Arguments]    ${offer_id}    ${sku}
+    Asignar Offer Id Al SKU Chip Express    ${offer_id}    ${sku}
+
+Se Captura El ICCID De La SIM Universal Y Se Confirma La Activación
+    [Documentation]    Captura el ICCID y confirma la activación del Chip
+    ...    Express en BES vía CustomerManagement.newSubscriber.
+    [Arguments]    ${iccid}
+    Capturar ICCID Y Activar Chip Express En BES    ${iccid}
+
+Se Evalúa La Aplicación De Promociones Para Chip Express
+    [Documentation]    Evalúa la aplicación de promociones para Chip Express.
+    Evaluar Aplicacion De Promociones Chip Express
+
+Se Genera La Factura Del CAC Para Chip Express
+    [Documentation]    Genera la factura del CAC con precio al canal y precio
+    ...    al cliente final.
+    Generar Factura CAC Chip Express
+
+Se Captura La Solicitud De Cambio De SIM Prepago Con Motivo
+    [Documentation]    Captura la solicitud de Cambio de SIM Prepago en CAC.
+    [Arguments]    ${motivo}
+    Capturar Solicitud Cambio De SIM Prepago    ${motivo}
+
+Se Selecciona La SIM Universal Prod 2 Y Se Captura El ICCID
+    [Documentation]    Selecciona la SIM Universal Prod 2 y captura su ICCID.
+    [Arguments]    ${sku}    ${iccid_nuevo}
+    Seleccionar SIM Universal Prod 2 Y Capturar ICCID    ${sku}    ${iccid_nuevo}
+
+Se Confirma El Cobro Y Se Procesa El Cambio De SIM En BES
+    [Documentation]    Confirma el cobro al cliente y procesa el cambio de SIM
+    ...    en BES vía CustomerManagement.changeSIM.
+    Confirmar Cobro Y Procesar Cambio SIM En BES
+
+Se Actualiza El ICCID En El Perfil Del Suscriptor En BES Y UPC
+    [Documentation]    Actualiza el ICCID en perfil del suscriptor y UPC.
+    Actualizar ICCID En Perfil Suscriptor Y UPC
+
+Se Desactiva El ICCID Anterior En Red Y BES
+    [Documentation]    Desactiva el ICCID anterior en red y BES.
+    Desactivar ICCID Anterior En Red Y BES
+
+Se Verifica Que El Cambio No Afecta El Plan Vigente Del Cliente
+    [Documentation]    Verifica que el cambio no afecta el plan vigente del
+    ...    cliente ni sus beneficios.
+    Verificar Plan Y Beneficios Vigentes Cambio SIM
+
+Se Consulta El Histórico De SIMs Asociadas Al IMEI
+    [Documentation]    Consulta el histórico de SIMs asociadas al IMEI en BES.
+    [Arguments]    ${imei}
+    Consultar Historico SIMs Por IMEI    ${imei}
+
+Se Intenta Activar Y Facturar Una Segunda SIM Amigo Kit Con El Mismo IMEI
+    [Documentation]    Intenta activar y facturar una segunda SIM Amigo Kit
+    ...    con el mismo IMEI en CAC.
+    [Arguments]    ${imei}    ${iccid_nueva}    ${sku_nueva}
+    Intentar Activar Y Facturar Segunda SIM Con Mismo IMEI    ${imei}    ${iccid_nueva}    ${sku_nueva}
+
+# ─────────────────────────── THEN ───────────────────────────
+
+El Sistema Muestra Chip Express Con Precios Y Etiqueta
+    [Documentation]    Verifica visualización con etiqueta y precios al canal y
+    ...    al cliente.
+    [Arguments]    ${etiqueta}    ${precio_canal}    ${precio_cliente}
+    Validar Producto Chip Express Visualizado Con Etiqueta    ${etiqueta}    ${precio_canal}    ${precio_cliente}
+
+BES Acepta La Combinación Offer Y SKU Sin Errores
+    [Documentation]    Verifica que BES aceptó la combinación Offer/SKU.
+    [Arguments]    ${codigo}
+    Validar Asignacion Offer Aceptada Sin Errores    ${codigo}
+
+BES Genera La Orden De Activación Con Estatus Exitoso
+    [Documentation]    Verifica que BES generó la orden de activación con
+    ...    estatus exitoso.
+    Validar Orden Activacion Chip Express Exitosa
+
+El Sistema No Aplica Promociones A Chip Express
+    [Documentation]    Verifica que no se aplican promociones a Chip Express.
+    Validar No Se Aplica Promocion Chip Express
+
+La Factura Del CAC Refleja Los Precios Al Canal Y Al Cliente
+    [Documentation]    Verifica precio al canal y precio al cliente final en la
+    ...    factura del CAC.
+    [Arguments]    ${precio_canal}    ${precio_cliente}
+    Validar Precios En Factura CAC Chip Express    ${precio_canal}    ${precio_cliente}
+
+BES Acepta La Solicitud Y Muestra El Precio De Cambio De SIM
+    [Documentation]    Verifica que BES acepta la solicitud y muestra el precio
+    ...    de cambio de SIM al cliente.
+    [Arguments]    ${precio}
+    Validar Solicitud Cambio SIM Acepta Con Precio    ${precio}
+
+BES Valida La Disponibilidad Del ICCID Y Registra La Asociación Al MSISDN
+    [Documentation]    Verifica disponibilidad del ICCID y la asociación al
+    ...    MSISDN del cliente.
+    Validar Iccid Nuevo Disponible Y Asociado A MSISDN
+
+El Cobro Se Refleja En La Cuenta Y La Orden De Cambio Se Genera
+    [Documentation]    Verifica que el cobro se reflejó en la cuenta y la orden
+    ...    de cambio fue generada.
+    [Arguments]    ${monto}
+    Validar Cobro Reflejado Y Orden Cambio SIM Generada    ${monto}
+
+El Nuevo ICCID Queda Asociado Al MSISDN Y Aprovisionado En Red
+    [Documentation]    Verifica que el nuevo ICCID queda asociado al MSISDN en
+    ...    BES y UPC y aprovisionado en red.
+    Validar ICCID Actualizado En Perfil BES Y UPC
+
+La SIM Anterior Queda Desactivada Y El Nuevo ICCID Activo Para Tráfico
+    [Documentation]    Verifica que la SIM anterior queda desactivada en red y
+    ...    BES.
+    Validar ICCID Anterior Desactivado
+
+El Plan Y Los Beneficios Del Cliente No Se Ven Afectados
+    [Documentation]    Verifica que no se afectan precios al usuario ni la
+    ...    configuración del plan (regla 5).
+    [Arguments]    ${plan}
+    Validar Plan Y Beneficios No Afectados Por Cambio SIM    ${plan}
+
+El Sistema Muestra Una SIM Amigo Kit Ya Asociada Y Facturada Al IMEI
+    [Documentation]    Verifica que el histórico muestra una SIM Amigo Kit
+    ...    asociada y facturada al IMEI.
+    Validar Historico SIMs Muestra Una Sim Facturada
+
+El Sistema Bloquea La Operación Por La Regla De 1 SIM Por IMEI
+    [Documentation]    Verifica que el sistema bloquea la operación conforme a
+    ...    la regla "Solo se podrá facturar 1 SIM por Equipo".
+    Validar Bloqueo Segunda SIM Por IMEI
+
+El Sistema Muestra Notificación De IMEI Ya Asociado A SIM Previa
+    [Documentation]    Verifica el mensaje de error/bloqueo en BES.
+    Validar Mensaje Error Bloqueo IMEI
+
+El Registro Original Conserva La Asociación SIM IMEI Sin Alteraciones
+    [Documentation]    Verifica que la SIM original no se ve afectada por el
+    ...    intento de segunda facturación.
+    Validar SIM Original Sin Alteraciones Por Bloqueo

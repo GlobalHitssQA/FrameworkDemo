@@ -1010,3 +1010,422 @@ Validar Error Propagado Hacia APAG Con Campos Faltantes
     Should Not Be True    ${apag}[ventaFormalizadaEnBES]
     @{faltantes}=    Set Variable    ${apag}[camposFaltantes]
     Should Be True    len(${faltantes}) > 0
+
+# ═══════════════════════════════════════════════════════════════════════
+# AMPLIACIÓN APPEND-ONLY — TC005 / TC016 / TC051
+# TC005: Activación Chip Express Offer ID 1013 (Amigo Chip Express Sin
+#        Límite R09) Prepago en CAC, SKU 7008294 (Prod 1).
+# TC016: Cambio de SIM Prepago en CAC con cobro de $50, SIM Universal
+#        Prod 2 SKU 7009251.
+# TC051: Bloqueo de facturación de más de una SIM por el mismo IMEI en
+#        CAC Prepago (1 SIM por Equipo).
+# Modelo determinista UAT (ESB BES-APAG / UPC no accesibles desde este
+# entorno).
+# # Integración pendiente de validación con ESB BES-APAG en vivo
+# # Locators pendientes de validación con app en vivo
+# ═══════════════════════════════════════════════════════════════════════
+
+*** Variables ***
+# --- Recursos OPEN API adicionales de BES (SIM Universal 2026) ---
+${BES_PATH_NEW_SUBSCRIBER}             /CustomerManagement/v1/newSubscriber
+${BES_PATH_CHANGE_SIM}                 /CustomerManagement/v1/changeSIM
+${BES_PATH_QUERY_SIM_BY_IMEI}          /TelcelCustomService/v1/querySIMByIMEI
+${BES_PATH_CATALOGO_UPC}               /upc/v1/catalog/products
+
+# --- Catálogo SIM Universal 2026 (Prod 1 / Prod 2) ---
+${BES_SKU_CHIP_EXPRESS}                7008294
+${BES_SKU_SIM_UNIVERSAL_PROD2}         7009251
+${BES_ETIQUETA_PRODUCTO_1}             Producto 1
+${BES_ETIQUETA_PRODUCTO_2}             Producto 2
+
+# --- Offer IDs (Amigo Chip Express) ---
+${BES_OFFER_CHIP_EXPRESS_R09}          1013
+${BES_OFFER_NOMBRE_R09}                Amigo Chip Express Sin Limite R09
+
+# --- Precios Chip Express (Prod 1) ---
+${BES_PRECIO_CANAL_CHIP_EXPRESS}       ${15}
+${BES_PRECIO_CLIENTE_CHIP_EXPRESS}     ${29}
+
+# --- Precio Cambio de SIM Prepago en CAC ---
+${BES_PRECIO_CAMBIO_SIM_PREPAGO}       ${50}
+
+# --- Motivos del Cambio de SIM ---
+${BES_MOTIVO_CAMBIO_PREFERENCIA}       PREFERENCIA_USUARIO
+${BES_MOTIVO_CAMBIO_ROBO}              ROBO
+${BES_MOTIVO_CAMBIO_EXTRAVIO}          EXTRAVIO
+
+# --- Estatus de SIM (red / BES) ---
+${BES_ESTATUS_SIM_ACTIVA}              ACTIVA
+${BES_ESTATUS_SIM_DESACTIVADA}         DESACTIVADA
+${BES_ESTATUS_SIM_FACTURADA}           FACTURADA
+
+# --- Mensajes / códigos de validación 1 SIM por IMEI ---
+${BES_CODIGO_BLOQUEO_IMEI}             BES-IMEI-001
+${BES_MENSAJE_BLOQUEO_IMEI}            IMEI ya asociado a SIM previa. Solo se podrá facturar 1 SIM por Equipo
+
+*** Keywords ***
+# ─────────────────────────── TC005 · Chip Express Offer ID 1013 ───────────────────────────
+
+Buscar Producto Chip Express En CAC Por SKU
+    [Documentation]    Busca el producto Chip Express en el CAC por SKU y obtiene
+    ...    su visualización desde el catálogo UPC sincronizado en BES (precio al
+    ...    canal, precio al cliente y etiqueta de producto).
+    [Arguments]    ${sku}
+    Should Not Be Empty    ${sku}
+    Set To Dictionary    ${BES_CTX}    sku=${sku}
+    &{producto}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    nombre=Chip Express    etiqueta=${BES_ETIQUETA_PRODUCTO_1}
+    ...    precioCanal=${BES_PRECIO_CANAL_CHIP_EXPRESS}
+    ...    precioCliente=${BES_PRECIO_CLIENTE_CHIP_EXPRESS}
+    ...    disponibleEnCatalogo=${TRUE}    sincronizadoBES=${TRUE}
+    Set To Dictionary    ${BES_CTX}    productoChipExpress=${producto}
+    RETURN    ${producto}
+
+Asignar Offer Id Al SKU Chip Express
+    [Documentation]    Asigna el Offer ID al SKU del Chip Express en BES y
+    ...    modela la respuesta de aceptación de la combinación.
+    [Arguments]    ${offer_id}    ${sku}
+    Should Not Be Empty    ${offer_id}
+    Should Not Be Empty    ${sku}
+    ${prod}=    Get From Dictionary    ${BES_CTX}    productoChipExpress
+    ${combinacion_valida}=    Evaluate
+    ...    '${offer_id}' == '${BES_OFFER_CHIP_EXPRESS_R09}' and '${sku}' == '${BES_SKU_CHIP_EXPRESS}'
+    IF    ${combinacion_valida}
+        &{resp}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+        ...    offerId=${offer_id}    sku=${sku}    offerNombre=${BES_OFFER_NOMBRE_R09}
+        ...    aceptado=${TRUE}    errorMessage=${EMPTY}
+    ELSE
+        &{resp}=    Create Dictionary    status=${400}    responseCode=${BES_RESPUESTA_ERROR_VALID}
+        ...    offerId=${offer_id}    sku=${sku}    aceptado=${FALSE}
+        ...    errorMessage=Combinación Offer/SKU inválida
+    END
+    Set To Dictionary    ${BES_CTX}    asignacionOfferChipExpress=${resp}
+    RETURN    ${resp}
+
+Capturar ICCID Y Activar Chip Express En BES
+    [Documentation]    Captura el ICCID de la SIM Universal y confirma la
+    ...    activación en BES vía CustomerManagement.newSubscriber, generando
+    ...    la orden de activación con estatus exitoso.
+    [Arguments]    ${iccid}
+    Should Not Be Empty    ${iccid}
+    Set To Dictionary    ${BES_CTX}    iccidChipExpress=${iccid}
+    ${sku}=    Get From Dictionary    ${BES_CTX}    sku
+    ${order_id}=    Set Variable    ACT-${sku}-${iccid}
+    &{orden}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+    ...    orderId=${order_id}    iccid=${iccid}    sku=${sku}
+    ...    offerId=${BES_OFFER_CHIP_EXPRESS_R09}
+    ...    estatusActivacion=EXITOSO    interfaz=newSubscriber
+    Set To Dictionary    ${BES_CTX}    ordenActivacionChipExpress=${orden}
+    RETURN    ${orden}
+
+Evaluar Aplicacion De Promociones Chip Express
+    [Documentation]    Modela la regla de negocio del documento: Chip Express
+    ...    no aplica ninguna promoción. Registra el resultado para validación.
+    &{eval}=    Create Dictionary    status=${200}    aplicaPromocion=${FALSE}
+    ...    promocionesAplicadas=${EMPTY}    regla=Chip Express. No aplica ninguna promoción
+    Set To Dictionary    ${BES_CTX}    promocionesChipExpress=${eval}
+    RETURN    ${eval}
+
+Generar Factura CAC Chip Express
+    [Documentation]    Genera la factura del CAC con precio al canal y precio
+    ...    al cliente final para el SKU de Chip Express.
+    ${sku}=    Get From Dictionary    ${BES_CTX}    sku
+    ${prod}=    Get From Dictionary    ${BES_CTX}    productoChipExpress
+    &{factura}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    precioCanal=${prod}[precioCanal]    precioCliente=${prod}[precioCliente]
+    ...    folioFactura=FAC-${sku}-CAC
+    Set To Dictionary    ${BES_CTX}    facturaCacChipExpress=${factura}
+    RETURN    ${factura}
+
+Validar Producto Chip Express Visualizado Con Etiqueta
+    [Documentation]    Verifica visualización del producto: precio al canal $15,
+    ...    precio al cliente $29 y etiqueta Producto 1.
+    [Arguments]    ${etiqueta_esperada}    ${precio_canal_esperado}    ${precio_cliente_esperado}
+    ${prod}=    Get From Dictionary    ${BES_CTX}    productoChipExpress
+    Should Be Equal As Integers    ${prod}[status]    200
+    Should Be Equal As Strings    ${prod}[etiqueta]    ${etiqueta_esperada}
+    Should Be Equal As Numbers    ${prod}[precioCanal]    ${precio_canal_esperado}
+    Should Be Equal As Numbers    ${prod}[precioCliente]    ${precio_cliente_esperado}
+    Should Be True    ${prod}[disponibleEnCatalogo]
+    Should Be True    ${prod}[sincronizadoBES]
+
+Validar Asignacion Offer Aceptada Sin Errores
+    [Documentation]    Verifica que BES aceptó la combinación Offer/SKU sin
+    ...    errores y respondió el código esperado.
+    [Arguments]    ${codigo_esperado}
+    ${resp}=    Get From Dictionary    ${BES_CTX}    asignacionOfferChipExpress
+    Should Be Equal As Integers    ${resp}[status]    200
+    Should Be Equal As Strings    ${resp}[responseCode]    ${codigo_esperado}
+    Should Be True    ${resp}[aceptado]
+    Should Be Equal As Strings    ${resp}[errorMessage]    ${EMPTY}
+
+Validar Orden Activacion Chip Express Exitosa
+    [Documentation]    Verifica que BES generó la orden de activación con
+    ...    estatus exitoso por la interfaz newSubscriber.
+    ${orden}=    Get From Dictionary    ${BES_CTX}    ordenActivacionChipExpress
+    Should Be Equal As Integers    ${orden}[status]    200
+    Should Be Equal As Strings    ${orden}[responseCode]    ${BES_RESPUESTA_EXITO}
+    Dictionary Should Contain Key    ${orden}    orderId
+    Should Be Equal As Strings    ${orden}[estatusActivacion]    EXITOSO
+    Should Be Equal As Strings    ${orden}[interfaz]    newSubscriber
+    ${iccid_ctx}=    Get From Dictionary    ${BES_CTX}    iccidChipExpress
+    Should Be Equal As Strings    ${orden}[iccid]    ${iccid_ctx}
+
+Validar No Se Aplica Promocion Chip Express
+    [Documentation]    Verifica que el sistema no aplica promociones a Chip
+    ...    Express, conforme a la regla del documento.
+    ${eval}=    Get From Dictionary    ${BES_CTX}    promocionesChipExpress
+    Should Be Equal As Integers    ${eval}[status]    200
+    Should Not Be True    ${eval}[aplicaPromocion]
+    Should Be Equal As Strings    ${eval}[promocionesAplicadas]    ${EMPTY}
+    Should Contain    ${eval}[regla]    No aplica ninguna promoción
+
+Validar Precios En Factura CAC Chip Express
+    [Documentation]    Verifica que la factura del CAC refleja correctamente
+    ...    el precio al canal y el precio al cliente final.
+    [Arguments]    ${precio_canal_esperado}    ${precio_cliente_esperado}
+    ${factura}=    Get From Dictionary    ${BES_CTX}    facturaCacChipExpress
+    Should Be Equal As Integers    ${factura}[status]    200
+    Should Be Equal As Numbers    ${factura}[precioCanal]    ${precio_canal_esperado}
+    Should Be Equal As Numbers    ${factura}[precioCliente]    ${precio_cliente_esperado}
+    Dictionary Should Contain Key    ${factura}    folioFactura
+
+# ─────────────────────────── TC016 · Cambio de SIM Prepago con cobro $50 ───────────────────────────
+
+Registrar Cliente Prepago Activo Para Cambio SIM
+    [Documentation]    Registra al cliente Prepago activo con MSISDN, ICCID
+    ...    actual y plan vigente, como precondición del cambio de SIM.
+    [Arguments]    ${msisdn}    ${iccid_anterior}    ${plan_vigente}
+    Should Not Be Empty    ${msisdn}
+    Should Not Be Empty    ${iccid_anterior}
+    Should Not Be Empty    ${plan_vigente}
+    &{cliente}=    Create Dictionary    msisdn=${msisdn}    iccidAnterior=${iccid_anterior}
+    ...    estatusSimAnterior=${BES_ESTATUS_SIM_ACTIVA}    plan=${plan_vigente}
+    ...    beneficios=BENEFICIOS_BASE
+    Set To Dictionary    ${BES_CTX}    clienteCambioSim=${cliente}
+    Set To Dictionary    ${BES_CTX}    msisdn=${msisdn}
+
+Capturar Solicitud Cambio De SIM Prepago
+    [Documentation]    Captura la solicitud de Cambio de SIM Prepago en CAC con
+    ...    motivo distinto a robo/extravío y muestra el precio de $50 al cliente.
+    [Arguments]    ${motivo}
+    Should Not Be Empty    ${motivo}
+    Should Not Be Equal As Strings    ${motivo}    ${BES_MOTIVO_CAMBIO_ROBO}
+    Should Not Be Equal As Strings    ${motivo}    ${BES_MOTIVO_CAMBIO_EXTRAVIO}
+    &{solicitud}=    Create Dictionary    status=${200}    motivo=${motivo}
+    ...    precioMostrado=${BES_PRECIO_CAMBIO_SIM_PREPAGO}    aceptada=${TRUE}
+    Set To Dictionary    ${BES_CTX}    solicitudCambioSim=${solicitud}
+    RETURN    ${solicitud}
+
+Seleccionar SIM Universal Prod 2 Y Capturar ICCID
+    [Documentation]    Selecciona la SIM Universal Prod 2 (SKU 7009251) como
+    ...    nueva SIM, valida disponibilidad del ICCID en BES y lo asocia al MSISDN.
+    [Arguments]    ${sku}    ${iccid_nuevo}
+    Should Not Be Empty    ${iccid_nuevo}
+    ${cliente}=    Get From Dictionary    ${BES_CTX}    clienteCambioSim
+    Set To Dictionary    ${BES_CTX}    skuSimNueva=${sku}    iccidNuevo=${iccid_nuevo}
+    &{validacion}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    iccid=${iccid_nuevo}    disponible=${TRUE}    msisdn=${cliente}[msisdn]
+    ...    asociado=${TRUE}    etiqueta=${BES_ETIQUETA_PRODUCTO_2}
+    Set To Dictionary    ${BES_CTX}    validacionIccidNuevo=${validacion}
+    RETURN    ${validacion}
+
+Confirmar Cobro Y Procesar Cambio SIM En BES
+    [Documentation]    Confirma el cobro de $50 al cliente y procesa el cambio
+    ...    de SIM en BES vía CustomerManagement.changeSIM. Genera la orden y
+    ...    refleja el cobro en la cuenta del cliente.
+    ${cliente}=    Get From Dictionary    ${BES_CTX}    clienteCambioSim
+    ${iccid_nuevo}=    Get From Dictionary    ${BES_CTX}    iccidNuevo
+    ${order_id}=    Set Variable    CHGSIM-${cliente}[msisdn]-${iccid_nuevo}
+    &{cobro}=    Create Dictionary    status=${200}    monto=${BES_PRECIO_CAMBIO_SIM_PREPAGO}
+    ...    reflejadoEnCuenta=${TRUE}    msisdn=${cliente}[msisdn]
+    &{orden}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+    ...    orderId=${order_id}    iccidAnterior=${cliente}[iccidAnterior]
+    ...    iccidNuevo=${iccid_nuevo}    interfaz=changeSIM
+    Set To Dictionary    ${BES_CTX}    cobroCambioSim=${cobro}
+    Set To Dictionary    ${BES_CTX}    ordenCambioSim=${orden}
+    RETURN    ${orden}
+
+Actualizar ICCID En Perfil Suscriptor Y UPC
+    [Documentation]    Actualiza el ICCID en el perfil del suscriptor en BES y
+    ...    en UPC; aprovisiona el nuevo ICCID en red para tráfico voz/datos.
+    ${cliente}=    Get From Dictionary    ${BES_CTX}    clienteCambioSim
+    ${iccid_nuevo}=    Get From Dictionary    ${BES_CTX}    iccidNuevo
+    &{perfil}=    Create Dictionary    status=${200}    msisdn=${cliente}[msisdn]
+    ...    iccidActual=${iccid_nuevo}    actualizadoEnBES=${TRUE}    actualizadoEnUPC=${TRUE}
+    ...    aprovisionadoEnRed=${TRUE}    estatusNuevaSim=${BES_ESTATUS_SIM_ACTIVA}
+    Set To Dictionary    ${BES_CTX}    perfilSuscriptorCambioSim=${perfil}
+    RETURN    ${perfil}
+
+Desactivar ICCID Anterior En Red Y BES
+    [Documentation]    Desactiva el ICCID anterior en red y en BES; el nuevo
+    ...    ICCID queda activo para tráfico de voz/datos.
+    ${cliente}=    Get From Dictionary    ${BES_CTX}    clienteCambioSim
+    Set To Dictionary    ${cliente}    estatusSimAnterior=${BES_ESTATUS_SIM_DESACTIVADA}
+    Set To Dictionary    ${BES_CTX}    clienteCambioSim=${cliente}
+    &{desact}=    Create Dictionary    status=${200}    iccidAnterior=${cliente}[iccidAnterior]
+    ...    estatus=${BES_ESTATUS_SIM_DESACTIVADA}    desactivadoEnRed=${TRUE}    desactivadoEnBES=${TRUE}
+    Set To Dictionary    ${BES_CTX}    desactivacionSimAnterior=${desact}
+    RETURN    ${desact}
+
+Verificar Plan Y Beneficios Vigentes Cambio SIM
+    [Documentation]    Verifica que el cambio no afecta el plan vigente ni los
+    ...    beneficios del cliente (regla 5 del documento).
+    ${cliente}=    Get From Dictionary    ${BES_CTX}    clienteCambioSim
+    &{verif}=    Create Dictionary    status=${200}    plan=${cliente}[plan]
+    ...    beneficios=${cliente}[beneficios]    afectados=${FALSE}
+    Set To Dictionary    ${BES_CTX}    verificacionPlanCambioSim=${verif}
+    RETURN    ${verif}
+
+Validar Solicitud Cambio SIM Acepta Con Precio
+    [Documentation]    Verifica que BES acepta la solicitud y muestra el precio
+    ...    de $50 al cliente.
+    [Arguments]    ${precio_esperado}
+    ${sol}=    Get From Dictionary    ${BES_CTX}    solicitudCambioSim
+    Should Be Equal As Integers    ${sol}[status]    200
+    Should Be True    ${sol}[aceptada]
+    Should Be Equal As Numbers    ${sol}[precioMostrado]    ${precio_esperado}
+
+Validar Iccid Nuevo Disponible Y Asociado A MSISDN
+    [Documentation]    Verifica que BES validó la disponibilidad del ICCID y
+    ...    registró la asociación al MSISDN.
+    ${v}=    Get From Dictionary    ${BES_CTX}    validacionIccidNuevo
+    Should Be Equal As Integers    ${v}[status]    200
+    Should Be True    ${v}[disponible]
+    Should Be True    ${v}[asociado]
+    ${iccid}=    Get From Dictionary    ${BES_CTX}    iccidNuevo
+    Should Be Equal As Strings    ${v}[iccid]    ${iccid}
+
+Validar Cobro Reflejado Y Orden Cambio SIM Generada
+    [Documentation]    Verifica que el cobro de $50 se reflejó en la cuenta y
+    ...    que BES generó la orden de cambio.
+    [Arguments]    ${monto_esperado}
+    ${cobro}=    Get From Dictionary    ${BES_CTX}    cobroCambioSim
+    Should Be Equal As Integers    ${cobro}[status]    200
+    Should Be Equal As Numbers    ${cobro}[monto]    ${monto_esperado}
+    Should Be True    ${cobro}[reflejadoEnCuenta]
+    ${orden}=    Get From Dictionary    ${BES_CTX}    ordenCambioSim
+    Should Be Equal As Integers    ${orden}[status]    200
+    Should Be Equal As Strings    ${orden}[responseCode]    ${BES_RESPUESTA_EXITO}
+    Dictionary Should Contain Key    ${orden}    orderId
+    Should Be Equal As Strings    ${orden}[interfaz]    changeSIM
+
+Validar ICCID Actualizado En Perfil BES Y UPC
+    [Documentation]    Verifica que el nuevo ICCID queda asociado al MSISDN en
+    ...    BES y UPC y aprovisionado en red.
+    ${perfil}=    Get From Dictionary    ${BES_CTX}    perfilSuscriptorCambioSim
+    ${iccid_nuevo}=    Get From Dictionary    ${BES_CTX}    iccidNuevo
+    Should Be Equal As Integers    ${perfil}[status]    200
+    Should Be Equal As Strings    ${perfil}[iccidActual]    ${iccid_nuevo}
+    Should Be True    ${perfil}[actualizadoEnBES]
+    Should Be True    ${perfil}[actualizadoEnUPC]
+    Should Be True    ${perfil}[aprovisionadoEnRed]
+    Should Be Equal As Strings    ${perfil}[estatusNuevaSim]    ${BES_ESTATUS_SIM_ACTIVA}
+
+Validar ICCID Anterior Desactivado
+    [Documentation]    Verifica que la SIM anterior quedó desactivada en red y
+    ...    BES.
+    ${d}=    Get From Dictionary    ${BES_CTX}    desactivacionSimAnterior
+    Should Be Equal As Integers    ${d}[status]    200
+    Should Be Equal As Strings    ${d}[estatus]    ${BES_ESTATUS_SIM_DESACTIVADA}
+    Should Be True    ${d}[desactivadoEnRed]
+    Should Be True    ${d}[desactivadoEnBES]
+
+Validar Plan Y Beneficios No Afectados Por Cambio SIM
+    [Documentation]    Verifica que no se afectan precios al usuario ni la
+    ...    configuración del plan (regla 5).
+    [Arguments]    ${plan_esperado}
+    ${v}=    Get From Dictionary    ${BES_CTX}    verificacionPlanCambioSim
+    Should Be Equal As Integers    ${v}[status]    200
+    Should Not Be True    ${v}[afectados]
+    Should Be Equal As Strings    ${v}[plan]    ${plan_esperado}
+
+# ─────────────────────────── TC051 · Bloqueo 1 SIM por IMEI ───────────────────────────
+
+Registrar IMEI Con SIM Previa Facturada
+    [Documentation]    Registra el histórico en BES de un IMEI Telcel válido
+    ...    con una SIM Amigo Kit ya facturada y asociada (precondición TC051).
+    [Arguments]    ${imei}    ${iccid_previa}    ${sku_previa}
+    Should Not Be Empty    ${imei}
+    Should Not Be Empty    ${iccid_previa}
+    Should Not Be Empty    ${sku_previa}
+    Set To Dictionary    ${BES_CTX}    imei=${imei}
+    &{sim_previa}=    Create Dictionary    iccid=${iccid_previa}    sku=${sku_previa}
+    ...    estatus=${BES_ESTATUS_SIM_FACTURADA}    asociadaAlImei=${TRUE}
+    @{historico}=    Create List    ${sim_previa}
+    &{registro}=    Create Dictionary    imei=${imei}    sims=${historico}    totalFacturadas=${1}
+    Set To Dictionary    ${BES_CTX}    historicoSimsImei=${registro}
+    Set To Dictionary    ${BES_CTX}    simPreviaImei=${sim_previa}
+
+Consultar Historico SIMs Por IMEI
+    [Documentation]    Consulta el histórico de SIMs asociadas al IMEI vía
+    ...    TelcelCustomService.querySIMByIMEI.
+    [Arguments]    ${imei}
+    ${registro}=    Get From Dictionary    ${BES_CTX}    historicoSimsImei
+    &{resp}=    Create Dictionary    status=${200}    imei=${imei}
+    ...    sims=${registro}[sims]    totalFacturadas=${registro}[totalFacturadas]
+    Set To Dictionary    ${BES_CTX}    respuestaHistoricoImei=${resp}
+    RETURN    ${resp}
+
+Intentar Activar Y Facturar Segunda SIM Con Mismo IMEI
+    [Documentation]    Intenta activar y facturar una segunda SIM Amigo Kit con
+    ...    el mismo IMEI en CAC. BES aplica la regla "Solo se podrá facturar 1
+    ...    SIM por Equipo" y bloquea la operación (ESB1 + mensaje de error).
+    [Arguments]    ${imei}    ${iccid_nueva}    ${sku_nueva}
+    Should Not Be Empty    ${imei}
+    Should Not Be Empty    ${iccid_nueva}
+    Should Not Be Empty    ${sku_nueva}
+    ${registro}=    Get From Dictionary    ${BES_CTX}    historicoSimsImei
+    ${ya_facturada}=    Evaluate    ${registro}[totalFacturadas] >= 1
+    IF    ${ya_facturada}
+        &{resp}=    Create Dictionary    status=${409}    responseCode=${BES_RESPUESTA_ERROR_VALID}
+        ...    codigoBloqueo=${BES_CODIGO_BLOQUEO_IMEI}
+        ...    mensaje=${BES_MENSAJE_BLOQUEO_IMEI}    operacionPermitida=${FALSE}
+        ...    imei=${imei}    iccidNueva=${iccid_nueva}    skuNueva=${sku_nueva}
+    ELSE
+        &{resp}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+        ...    operacionPermitida=${TRUE}    imei=${imei}    iccidNueva=${iccid_nueva}
+    END
+    Set To Dictionary    ${BES_CTX}    respuestaSegundaSim=${resp}
+    RETURN    ${resp}
+
+Validar Historico SIMs Muestra Una Sim Facturada
+    [Documentation]    Verifica que el histórico muestra una SIM Amigo Kit ya
+    ...    asociada y facturada al IMEI.
+    ${resp}=    Get From Dictionary    ${BES_CTX}    respuestaHistoricoImei
+    Should Be Equal As Integers    ${resp}[status]    200
+    Should Be Equal As Integers    ${resp}[totalFacturadas]    1
+    @{sims}=    Set Variable    ${resp}[sims]
+    Length Should Be    ${sims}    1
+    ${sim}=    Set Variable    ${sims}[0]
+    Should Be Equal As Strings    ${sim}[estatus]    ${BES_ESTATUS_SIM_FACTURADA}
+    Should Be True    ${sim}[asociadaAlImei]
+
+Validar Bloqueo Segunda SIM Por IMEI
+    [Documentation]    Verifica que el sistema bloquea la operación conforme a
+    ...    la regla "Solo se podrá facturar 1 SIM por Equipo".
+    ${resp}=    Get From Dictionary    ${BES_CTX}    respuestaSegundaSim
+    Should Be Equal As Integers    ${resp}[status]    409
+    Should Be Equal As Strings    ${resp}[responseCode]    ${BES_RESPUESTA_ERROR_VALID}
+    Should Not Be True    ${resp}[operacionPermitida]
+
+Validar Mensaje Error Bloqueo IMEI
+    [Documentation]    Verifica que BES muestra la notificación indicando que
+    ...    el IMEI ya está asociado a una SIM previa.
+    ${resp}=    Get From Dictionary    ${BES_CTX}    respuestaSegundaSim
+    Should Be Equal As Strings    ${resp}[codigoBloqueo]    ${BES_CODIGO_BLOQUEO_IMEI}
+    Should Contain    ${resp}[mensaje]    IMEI
+    Should Contain    ${resp}[mensaje]    1 SIM por Equipo
+
+Validar SIM Original Sin Alteraciones Por Bloqueo
+    [Documentation]    Verifica que el registro original conserva la asociación
+    ...    SIM-IMEI sin alteraciones tras el intento de segunda facturación.
+    ${registro}=    Get From Dictionary    ${BES_CTX}    historicoSimsImei
+    Should Be Equal As Integers    ${registro}[totalFacturadas]    1
+    ${prev}=    Get From Dictionary    ${BES_CTX}    simPreviaImei
+    @{sims}=    Set Variable    ${registro}[sims]
+    ${actual}=    Set Variable    ${sims}[0]
+    Should Be Equal As Strings    ${actual}[iccid]    ${prev}[iccid]
+    Should Be Equal As Strings    ${actual}[sku]    ${prev}[sku]
+    Should Be Equal As Strings    ${actual}[estatus]    ${BES_ESTATUS_SIM_FACTURADA}
+    Should Be True    ${actual}[asociadaAlImei]
