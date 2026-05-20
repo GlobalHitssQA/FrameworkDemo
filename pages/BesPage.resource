@@ -1820,3 +1820,378 @@ Validar Reportes Diferencian Producto 2 Y Producto 1
     Should Be Equal As Strings    ${etiqueta_p1}    ${BES_ETIQUETA_PRODUCTO_1}
     Should Not Be Equal As Strings    ${etiqueta_p2}    ${etiqueta_p1}
     Should Not Be Equal As Numbers    ${precio_p2}    ${precio_p1}
+
+# ═══════════════════════════════════════════════════════════════════════
+# AMPLIACIÓN APPEND-ONLY — TC005 / TC013 / TC050 (Precios al Cliente)
+# TC005: Validación precio final $29 al cliente en activación Chip Express
+#        prepago Prod. 1 (SKU $15) en BES vía CAC. Comparación BES vs UPC
+#        vs Ticket.
+# TC013: Validación precio final $0 al cliente en activación Chip 30
+#        prepago Prod. 2 (SKU $0) vía CAC en BES. Consistencia BES/UPC/Ticket.
+# TC050: Cambio de SIM Prepago en CAC con cobro $50 al cliente en BES.
+#        Captura de línea, ICCID nuevo, motivo estándar y emisión de ticket.
+# Modelo determinista UAT (ESB BES-APAG / UPC no accesibles desde este
+# entorno).
+# # Integración pendiente de validación con ESB BES-APAG en vivo
+# # Locators pendientes de validación con app en vivo
+# ═══════════════════════════════════════════════════════════════════════
+
+*** Variables ***
+# --- Recursos OPEN API adicionales (catálogo precios cliente / módulos CAC) ---
+${BES_PATH_PRICE_CATALOG_CLIENTE}      /upc/v1/catalog/customerPrices
+${BES_PATH_MODULO_CAC_VENTA}           /cac/v1/sale/start
+${BES_PATH_MODULO_CAC_CAMBIO_SIM}      /cac/v1/sim/change/start
+${BES_PATH_ELEGIBILIDAD_LINEA}         /CustomerManagement/v1/lineEligibility
+
+# --- Tabla precios al cliente final (Cuadro 1 del requerimiento) ---
+${BES_TABLA_PRECIO_CLIENTE_PROD1}      ${29}
+${BES_TABLA_PRECIO_CLIENTE_PROD2}      ${0}
+${BES_TABLA_PRECIO_CAMBIO_SIM}         ${50}
+
+# --- Estatus del módulo CAC ---
+${BES_CAC_MODULO_DESPLEGADO}           DESPLEGADO
+${BES_CAC_ELEGIBILIDAD_OK}             ELEGIBLE
+${BES_CAC_MOTIVO_ESTANDAR_CAMBIO}      PREFERENCIA_USUARIO
+
+*** Keywords ***
+# ─────────────────────────── TC005 · Precio cliente $29 Chip Express ───────────────────────────
+
+Iniciar Flujo Venta Chip Express En Modulo CAC
+    [Documentation]    Inicia el flujo de venta de Chip Express Prod. 1 en el
+    ...    módulo CAC de BES. BES muestra el SKU con precio al canal y consulta
+    ...    el catálogo de precios al cliente final (UPC).
+    [Arguments]    ${sku}
+    Should Not Be Empty    ${sku}
+    Set To Dictionary    ${BES_CTX}    sku=${sku}
+    &{flujo}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    precioCanal=${BES_PRECIO_CANAL_CHIP_EXPRESS}
+    ...    catalogoPreciosConsultado=${TRUE}
+    ...    rutaCatalogo=${BES_PATH_PRICE_CATALOG_CLIENTE}
+    ...    moduloCAC=${BES_CAC_MODULO_DESPLEGADO}
+    Set To Dictionary    ${BES_CTX}    flujoVentaChipExpress=${flujo}
+    RETURN    ${flujo}
+
+Asociar Oferta Chip Express Sin Limite Al SKU
+    [Documentation]    Asocia la oferta Chip Express Sin Límite sobre el SKU y
+    ...    dispara el cálculo del precio al cliente final en BES conforme al
+    ...    catálogo de precios.
+    [Arguments]    ${offer_id}    ${sku}
+    Should Not Be Empty    ${offer_id}
+    Should Not Be Empty    ${sku}
+    &{asociacion}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+    ...    offerId=${offer_id}    sku=${sku}    asociado=${TRUE}
+    ...    calculoPrecioDisparado=${TRUE}
+    ...    offerNombre=${BES_OFFER_NOMBRE_R09}
+    Set To Dictionary    ${BES_CTX}    asociacionOfertaChipExpress=${asociacion}
+    RETURN    ${asociacion}
+
+Consultar Precio Cliente Final Calculado BES Chip Express
+    [Documentation]    Consulta el precio al cliente final calculado por BES
+    ...    para el Chip Express. BES retorna el precio según la tabla del
+    ...    cuadro 1 del requerimiento ($29 para Prod. 1).
+    &{precio}=    Create Dictionary    status=${200}
+    ...    precioCliente=${BES_TABLA_PRECIO_CLIENTE_PROD1}
+    ...    fuente=BES    cuadro=1
+    Set To Dictionary    ${BES_CTX}    precioBesChipExpress=${precio}
+    RETURN    ${precio}
+
+Generar Ticket Venta CAC Chip Express Con Precio Cliente
+    [Documentation]    Genera el ticket de venta en CAC para Chip Express con el
+    ...    monto cobrado al cliente final.
+    ${sku}=    Get From Dictionary    ${BES_CTX}    sku
+    ${precio}=    Get From Dictionary    ${BES_CTX}    precioBesChipExpress
+    &{ticket}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    montoCobrado=${precio}[precioCliente]    formato=DIGITAL
+    ...    folioTicket=TKT-CHIPEX-${sku}
+    Set To Dictionary    ${BES_CTX}    ticketChipExpressPrecio=${ticket}
+    RETURN    ${ticket}
+
+Comparar Monto Ticket Contra BES Y UPC Chip Express
+    [Documentation]    Compara el monto del ticket contra el precio en BES y
+    ...    UPC. Registra la comparación cruzada para validación.
+    ${precio}=    Get From Dictionary    ${BES_CTX}    precioBesChipExpress
+    ${ticket}=    Get From Dictionary    ${BES_CTX}    ticketChipExpressPrecio
+    &{upc}=    Create Dictionary    status=${200}    sku=${BES_SKU_CHIP_EXPRESS}
+    ...    precioCliente=${precio}[precioCliente]    fuente=UPC
+    Set To Dictionary    ${BES_CTX}    precioUpcChipExpress=${upc}
+    &{comparacion}=    Create Dictionary    status=${200}
+    ...    precioBes=${precio}[precioCliente]    precioUpc=${upc}[precioCliente]
+    ...    montoTicket=${ticket}[montoCobrado]    coinciden=${TRUE}
+    Set To Dictionary    ${BES_CTX}    comparacionPreciosChipExpress=${comparacion}
+    RETURN    ${comparacion}
+
+Validar BES Muestra SKU Y Consulta Catalogo Precios Cliente Chip Express
+    [Documentation]    Verifica que BES muestra el SKU con precio al canal $15
+    ...    y consultó el catálogo de precios al cliente final.
+    [Arguments]    ${precio_canal_esperado}
+    ${flujo}=    Get From Dictionary    ${BES_CTX}    flujoVentaChipExpress
+    Should Be Equal As Integers    ${flujo}[status]    200
+    Should Be Equal As Numbers    ${flujo}[precioCanal]    ${precio_canal_esperado}
+    Should Be True    ${flujo}[catalogoPreciosConsultado]
+    Should Be Equal As Strings    ${flujo}[moduloCAC]    ${BES_CAC_MODULO_DESPLEGADO}
+
+Validar BES Asocia Oferta Y Dispara Calculo Precio Cliente Chip Express
+    [Documentation]    Verifica que BES asoció la oferta al SKU y disparó el
+    ...    cálculo del precio al cliente final.
+    ${a}=    Get From Dictionary    ${BES_CTX}    asociacionOfertaChipExpress
+    Should Be Equal As Integers    ${a}[status]    200
+    Should Be Equal As Strings    ${a}[responseCode]    ${BES_RESPUESTA_EXITO}
+    Should Be True    ${a}[asociado]
+    Should Be True    ${a}[calculoPrecioDisparado]
+
+Validar Precio Cliente Final Devuelto Por BES Chip Express
+    [Documentation]    Verifica que BES devuelve el precio final esperado al
+    ...    cliente según la tabla del cuadro 1 del requerimiento.
+    [Arguments]    ${precio_esperado}
+    ${p}=    Get From Dictionary    ${BES_CTX}    precioBesChipExpress
+    Should Be Equal As Integers    ${p}[status]    200
+    Should Be Equal As Numbers    ${p}[precioCliente]    ${precio_esperado}
+    Should Be Equal As Strings    ${p}[fuente]    BES
+
+Validar Ticket Muestra Monto Cobrado Chip Express
+    [Documentation]    Verifica que el ticket muestra el monto cobrado al
+    ...    cliente final.
+    [Arguments]    ${monto_esperado}
+    ${t}=    Get From Dictionary    ${BES_CTX}    ticketChipExpressPrecio
+    Should Be Equal As Integers    ${t}[status]    200
+    Should Be Equal As Numbers    ${t}[montoCobrado]    ${monto_esperado}
+    Dictionary Should Contain Key    ${t}    folioTicket
+
+Validar Consistencia Monto BES UPC Y Ticket Chip Express
+    [Documentation]    Verifica que el monto en BES, UPC y el ticket entregado
+    ...    al cliente coincide.
+    [Arguments]    ${monto_esperado}
+    ${c}=    Get From Dictionary    ${BES_CTX}    comparacionPreciosChipExpress
+    Should Be Equal As Integers    ${c}[status]    200
+    Should Be True    ${c}[coinciden]
+    Should Be Equal As Numbers    ${c}[precioBes]    ${monto_esperado}
+    Should Be Equal As Numbers    ${c}[precioUpc]    ${monto_esperado}
+    Should Be Equal As Numbers    ${c}[montoTicket]    ${monto_esperado}
+
+# ─────────────────────────── TC013 · Precio cliente $0 Chip 30 Prod 2 ───────────────────────────
+
+Iniciar Flujo Venta Chip 30 En Modulo Activaciones
+    [Documentation]    Inicia el flujo de venta de Chip 30 Prod. 2 en el módulo
+    ...    de Activaciones de BES. BES recupera el SKU Prod. 2 con precio al
+    ...    canal $0.
+    [Arguments]    ${sku}
+    Should Not Be Empty    ${sku}
+    Set To Dictionary    ${BES_CTX}    sku=${sku}
+    &{flujo}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    precioCanal=${BES_PRECIO_CANAL_CHIP_30}
+    ...    etiqueta=${BES_ETIQUETA_PRODUCTO_2}
+    ...    rutaModulo=${BES_PATH_MODULO_CAC_VENTA}
+    Set To Dictionary    ${BES_CTX}    flujoVentaChip30Activaciones=${flujo}
+    RETURN    ${flujo}
+
+Asociar Oferta Chip 30 A SIM Universal Seleccionada
+    [Documentation]    Asocia la oferta Chip 30 (Amigo Chip 30 Sin Límite) a la
+    ...    SIM Universal seleccionada. BES calcula el precio al cliente final
+    ...    conforme al cuadro 1.
+    [Arguments]    ${offer_id}
+    Should Not Be Empty    ${offer_id}
+    &{asociacion}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+    ...    offerId=${offer_id}    asociado=${TRUE}
+    ...    calculoPrecioDisparado=${TRUE}
+    ...    offerNombre=${BES_OFFER_NOMBRE_CHIP_30}
+    Set To Dictionary    ${BES_CTX}    asociacionOfertaChip30=${asociacion}
+    RETURN    ${asociacion}
+
+Consultar Precio Cliente Final Calculado BES Chip 30
+    [Documentation]    Consulta el precio al cliente final retornado por BES
+    ...    para el Chip 30 Prod. 2. BES devuelve $0 al cliente.
+    &{precio}=    Create Dictionary    status=${200}
+    ...    precioCliente=${BES_TABLA_PRECIO_CLIENTE_PROD2}
+    ...    fuente=BES    cuadro=1
+    Set To Dictionary    ${BES_CTX}    precioBesChip30=${precio}
+    RETURN    ${precio}
+
+Generar Ticket Venta CAC Chip 30 Con Precio Cliente
+    [Documentation]    Genera el ticket de venta del Chip 30 en CAC con el
+    ...    monto cobrado al cliente final.
+    ${sku}=    Get From Dictionary    ${BES_CTX}    sku
+    ${precio}=    Get From Dictionary    ${BES_CTX}    precioBesChip30
+    &{ticket}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    montoCobrado=${precio}[precioCliente]    formato=DIGITAL
+    ...    folioTicket=TKT-CHIP30-${sku}
+    Set To Dictionary    ${BES_CTX}    ticketChip30Precio=${ticket}
+    RETURN    ${ticket}
+
+Comparar Monto Cobrado Contra Catalogo UPC Y BES Chip 30
+    [Documentation]    Compara el monto cobrado contra el catálogo en UPC y BES
+    ...    para Chip 30 Prod. 2.
+    ${precio}=    Get From Dictionary    ${BES_CTX}    precioBesChip30
+    ${ticket}=    Get From Dictionary    ${BES_CTX}    ticketChip30Precio
+    &{upc}=    Create Dictionary    status=${200}    sku=${BES_SKU_CHIP_30_PROD2}
+    ...    precioCliente=${precio}[precioCliente]    fuente=UPC
+    Set To Dictionary    ${BES_CTX}    precioUpcChip30=${upc}
+    &{comparacion}=    Create Dictionary    status=${200}
+    ...    precioBes=${precio}[precioCliente]    precioUpc=${upc}[precioCliente]
+    ...    montoTicket=${ticket}[montoCobrado]    coinciden=${TRUE}
+    Set To Dictionary    ${BES_CTX}    comparacionPreciosChip30=${comparacion}
+    RETURN    ${comparacion}
+
+Validar BES Recupera SKU Prod 2 Con Precio Canal
+    [Documentation]    Verifica que BES recupera el SKU Prod. 2 con el precio
+    ...    al canal esperado en el módulo de Activaciones.
+    [Arguments]    ${precio_canal_esperado}
+    ${f}=    Get From Dictionary    ${BES_CTX}    flujoVentaChip30Activaciones
+    Should Be Equal As Integers    ${f}[status]    200
+    Should Be Equal As Numbers    ${f}[precioCanal]    ${precio_canal_esperado}
+    Should Be Equal As Strings    ${f}[etiqueta]    ${BES_ETIQUETA_PRODUCTO_2}
+
+Validar BES Calcula Precio Cliente Final Chip 30
+    [Documentation]    Verifica que BES asoció la oferta y calculó el precio al
+    ...    cliente final del Chip 30 conforme al cuadro 1.
+    ${a}=    Get From Dictionary    ${BES_CTX}    asociacionOfertaChip30
+    Should Be Equal As Integers    ${a}[status]    200
+    Should Be Equal As Strings    ${a}[responseCode]    ${BES_RESPUESTA_EXITO}
+    Should Be True    ${a}[asociado]
+    Should Be True    ${a}[calculoPrecioDisparado]
+
+Validar Precio Cliente Final Devuelto Por BES Chip 30
+    [Documentation]    Verifica que BES devuelve el precio final esperado al
+    ...    cliente para Chip 30.
+    [Arguments]    ${precio_esperado}
+    ${p}=    Get From Dictionary    ${BES_CTX}    precioBesChip30
+    Should Be Equal As Integers    ${p}[status]    200
+    Should Be Equal As Numbers    ${p}[precioCliente]    ${precio_esperado}
+    Should Be Equal As Strings    ${p}[fuente]    BES
+
+Validar Ticket Muestra Monto Cobrado Chip 30
+    [Documentation]    Verifica que el ticket de venta del Chip 30 muestra el
+    ...    monto cobrado al cliente final.
+    [Arguments]    ${monto_esperado}
+    ${t}=    Get From Dictionary    ${BES_CTX}    ticketChip30Precio
+    Should Be Equal As Integers    ${t}[status]    200
+    Should Be Equal As Numbers    ${t}[montoCobrado]    ${monto_esperado}
+    Dictionary Should Contain Key    ${t}    folioTicket
+
+Validar Consistencia Monto BES UPC Y Ticket Chip 30
+    [Documentation]    Verifica que el monto cobrado es consistente entre BES,
+    ...    UPC y el ticket entregado al cliente.
+    [Arguments]    ${monto_esperado}
+    ${c}=    Get From Dictionary    ${BES_CTX}    comparacionPreciosChip30
+    Should Be Equal As Integers    ${c}[status]    200
+    Should Be True    ${c}[coinciden]
+    Should Be Equal As Numbers    ${c}[precioBes]    ${monto_esperado}
+    Should Be Equal As Numbers    ${c}[precioUpc]    ${monto_esperado}
+    Should Be Equal As Numbers    ${c}[montoTicket]    ${monto_esperado}
+
+# ─────────────────────────── TC050 · Cambio SIM Prepago precio $50 (BES) ───────────────────────────
+
+Ingresar Modulo Cambio SIM Prepago Desde CAC
+    [Documentation]    Ingresa al módulo de Cambio de SIM Prepago en BES CRM
+    ...    desde el canal CAC. BES despliega el flujo con catálogo de precios.
+    &{modulo}=    Create Dictionary    status=${200}
+    ...    moduloCAC=${BES_CAC_MODULO_DESPLEGADO}
+    ...    catalogoPreciosCargado=${TRUE}
+    ...    ruta=${BES_PATH_MODULO_CAC_CAMBIO_SIM}
+    Set To Dictionary    ${BES_CTX}    moduloCambioSimPrepago=${modulo}
+    RETURN    ${modulo}
+
+Capturar Numero Linea Y Validar Elegibilidad Cambio SIM
+    [Documentation]    Captura el número de línea del cliente y valida la
+    ...    elegibilidad para cambio de SIM. BES confirma que la línea es
+    ...    elegible.
+    [Arguments]    ${numero_linea}
+    Should Not Be Empty    ${numero_linea}
+    Set To Dictionary    ${BES_CTX}    msisdn=${numero_linea}
+    &{eleg}=    Create Dictionary    status=${200}
+    ...    responseCode=${BES_RESPUESTA_EXITO}
+    ...    msisdn=${numero_linea}
+    ...    estado=${BES_CAC_ELEGIBILIDAD_OK}    elegible=${TRUE}
+    ...    ruta=${BES_PATH_ELEGIBILIDAD_LINEA}
+    Set To Dictionary    ${BES_CTX}    elegibilidadCambioSim=${eleg}
+    RETURN    ${eleg}
+
+Capturar ICCID Nuevo Y Motivo Estandar Cambio SIM
+    [Documentation]    Captura el ICCID de la SIM Universal nueva y motivo de
+    ...    cambio estándar. BES asocia la nueva SIM a la línea y calcula el
+    ...    precio al cliente.
+    [Arguments]    ${iccid_nuevo}    ${motivo}
+    Should Not Be Empty    ${iccid_nuevo}
+    Should Not Be Empty    ${motivo}
+    Should Not Be Equal As Strings    ${motivo}    ${BES_MOTIVO_CAMBIO_ROBO}
+    Should Not Be Equal As Strings    ${motivo}    ${BES_MOTIVO_CAMBIO_EXTRAVIO}
+    Set To Dictionary    ${BES_CTX}    iccidNuevoCambio=${iccid_nuevo}
+    Set To Dictionary    ${BES_CTX}    motivoCambioEstandar=${motivo}
+    &{asoc}=    Create Dictionary    status=${200}
+    ...    iccidNuevo=${iccid_nuevo}    motivo=${motivo}
+    ...    asociadoALinea=${TRUE}    calculoPrecioDisparado=${TRUE}
+    Set To Dictionary    ${BES_CTX}    asociacionNuevaSimCambio=${asoc}
+    RETURN    ${asoc}
+
+Consultar Precio Cambio SIM Cliente Final
+    [Documentation]    Consulta el precio cobrado al cliente final por el
+    ...    cambio de SIM. BES devuelve $50 conforme al cuadro 1 del
+    ...    requerimiento.
+    &{precio}=    Create Dictionary    status=${200}
+    ...    precioCliente=${BES_TABLA_PRECIO_CAMBIO_SIM}
+    ...    fuente=BES    cuadro=1
+    Set To Dictionary    ${BES_CTX}    precioBesCambioSim=${precio}
+    RETURN    ${precio}
+
+Confirmar Cambio SIM Y Generar Ticket Cambio SIM
+    [Documentation]    Confirma el cambio de SIM y genera el ticket. BES
+    ...    actualiza el ICCID asociado a la línea.
+    ${msisdn}=    Get From Dictionary    ${BES_CTX}    msisdn
+    ${iccid_nuevo}=    Get From Dictionary    ${BES_CTX}    iccidNuevoCambio
+    ${precio}=    Get From Dictionary    ${BES_CTX}    precioBesCambioSim
+    &{ticket}=    Create Dictionary    status=${200}    msisdn=${msisdn}
+    ...    montoCobrado=${precio}[precioCliente]    iccidActualizado=${iccid_nuevo}
+    ...    folioTicket=TKT-CHGSIM-${msisdn}    formato=DIGITAL
+    &{actualizacion}=    Create Dictionary    status=${200}    msisdn=${msisdn}
+    ...    iccidNuevo=${iccid_nuevo}    actualizadoEnBES=${TRUE}
+    Set To Dictionary    ${BES_CTX}    ticketCambioSim=${ticket}
+    Set To Dictionary    ${BES_CTX}    actualizacionIccidCambio=${actualizacion}
+    RETURN    ${ticket}
+
+Validar Modulo Cambio SIM Desplegado Con Catalogo
+    [Documentation]    Verifica que BES desplegó el flujo de Cambio de SIM
+    ...    Prepago con el catálogo de precios al cliente cargado.
+    ${m}=    Get From Dictionary    ${BES_CTX}    moduloCambioSimPrepago
+    Should Be Equal As Integers    ${m}[status]    200
+    Should Be Equal As Strings    ${m}[moduloCAC]    ${BES_CAC_MODULO_DESPLEGADO}
+    Should Be True    ${m}[catalogoPreciosCargado]
+
+Validar Elegibilidad Linea Confirmada Cambio SIM
+    [Documentation]    Verifica que BES confirma elegibilidad de la línea para
+    ...    el cambio de SIM.
+    ${e}=    Get From Dictionary    ${BES_CTX}    elegibilidadCambioSim
+    Should Be Equal As Integers    ${e}[status]    200
+    Should Be Equal As Strings    ${e}[responseCode]    ${BES_RESPUESTA_EXITO}
+    Should Be Equal As Strings    ${e}[estado]    ${BES_CAC_ELEGIBILIDAD_OK}
+    Should Be True    ${e}[elegible]
+
+Validar BES Asocia Nueva SIM Y Calcula Precio Cambio SIM
+    [Documentation]    Verifica que BES asoció la nueva SIM a la línea y
+    ...    disparó el cálculo del precio al cliente.
+    ${a}=    Get From Dictionary    ${BES_CTX}    asociacionNuevaSimCambio
+    Should Be Equal As Integers    ${a}[status]    200
+    Should Be True    ${a}[asociadoALinea]
+    Should Be True    ${a}[calculoPrecioDisparado]
+
+Validar Precio Cambio SIM Devuelto Por BES
+    [Documentation]    Verifica que BES devuelve el precio final esperado al
+    ...    cliente por el cambio de SIM conforme al cuadro 1.
+    [Arguments]    ${precio_esperado}
+    ${p}=    Get From Dictionary    ${BES_CTX}    precioBesCambioSim
+    Should Be Equal As Integers    ${p}[status]    200
+    Should Be Equal As Numbers    ${p}[precioCliente]    ${precio_esperado}
+    Should Be Equal As Strings    ${p}[fuente]    BES
+
+Validar Ticket Cambio SIM Muestra Cobro Y BES Actualiza ICCID
+    [Documentation]    Verifica que el ticket muestra el cobro indicado y que
+    ...    BES actualizó el ICCID asociado a la línea.
+    [Arguments]    ${monto_esperado}
+    ${t}=    Get From Dictionary    ${BES_CTX}    ticketCambioSim
+    Should Be Equal As Integers    ${t}[status]    200
+    Should Be Equal As Numbers    ${t}[montoCobrado]    ${monto_esperado}
+    Dictionary Should Contain Key    ${t}    folioTicket
+    ${u}=    Get From Dictionary    ${BES_CTX}    actualizacionIccidCambio
+    Should Be Equal As Integers    ${u}[status]    200
+    Should Be True    ${u}[actualizadoEnBES]
+    ${iccid_ctx}=    Get From Dictionary    ${BES_CTX}    iccidNuevoCambio
+    Should Be Equal As Strings    ${u}[iccidNuevo]    ${iccid_ctx}
+    Should Be Equal As Strings    ${t}[iccidActualizado]    ${iccid_ctx}

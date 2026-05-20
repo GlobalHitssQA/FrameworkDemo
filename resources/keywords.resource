@@ -704,3 +704,183 @@ Los Reportes Diferencian Correctamente Producto 2 De Producto 1
     [Documentation]    Verifica que los reportes diferencian correctamente
     ...    Producto 2 ($0) de Producto 1 ($15).
     Validar Reportes Diferencian Producto 2 Y Producto 1
+
+# ═══════════════════════════════════════════════════════════════════════
+# AMPLIACIÓN APPEND-ONLY — Orquestación TC005 / TC013 / TC050
+# Validación de precios al cliente final ($29 Chip Express Prod. 1,
+# $0 Chip 30 Prod. 2, $50 Cambio de SIM Prepago) en BES vía CAC con
+# comparación cruzada contra UPC y ticket.
+# Sin selectores ni endpoints: delegan en BesPage / Vista360Page.
+# ═══════════════════════════════════════════════════════════════════════
+
+*** Keywords ***
+# ─────────────────────────── WHEN ───────────────────────────
+
+Se Inicia El Flujo De Venta De Chip Express En El Modulo CAC
+    [Documentation]    Inicia el flujo de venta del Chip Express Prod. 1 en el
+    ...    módulo CAC de BES; muestra el SKU $15 y consulta el catálogo de
+    ...    precios al cliente final.
+    [Arguments]    ${sku}
+    Iniciar Flujo Venta Chip Express En Modulo CAC    ${sku}
+
+Se Selecciona La Oferta Chip Express Sin Limite Sobre El SKU
+    [Documentation]    Selecciona la oferta Chip Express Sin Límite sobre el
+    ...    SKU; BES asocia la oferta y dispara el cálculo del precio al
+    ...    cliente final.
+    [Arguments]    ${offer_id}    ${sku}
+    Asociar Oferta Chip Express Sin Limite Al SKU    ${offer_id}    ${sku}
+
+Se Consulta El Precio Al Cliente Final Calculado Por BES Para Chip Express
+    [Documentation]    Consulta el precio al cliente final calculado por BES
+    ...    para el Chip Express Prod. 1.
+    Consultar Precio Cliente Final Calculado BES Chip Express
+
+Se Genera El Ticket De Venta En CAC Para Chip Express
+    [Documentation]    Genera el ticket de venta en CAC con el monto cobrado al
+    ...    cliente final del Chip Express.
+    Generar Ticket Venta CAC Chip Express Con Precio Cliente
+
+Se Compara El Monto Del Ticket Contra El Precio En BES Y UPC Para Chip Express
+    [Documentation]    Compara el monto del ticket contra el precio en BES y UPC
+    ...    para el Chip Express.
+    Comparar Monto Ticket Contra BES Y UPC Chip Express
+
+Se Inicia El Flujo De Venta De Chip 30 En El Modulo De Activaciones
+    [Documentation]    Inicia el flujo de venta del Chip 30 Prod. 2 en el módulo
+    ...    de Activaciones de BES; recupera el SKU con precio al canal $0.
+    [Arguments]    ${sku}
+    Iniciar Flujo Venta Chip 30 En Modulo Activaciones    ${sku}
+
+Se Asocia La Oferta Chip 30 A La SIM Universal Seleccionada
+    [Documentation]    Asocia la oferta Amigo Chip 30 Sin Límite a la SIM
+    ...    Universal seleccionada; BES calcula el precio al cliente final.
+    [Arguments]    ${offer_id}
+    Asociar Oferta Chip 30 A SIM Universal Seleccionada    ${offer_id}
+
+Se Consulta El Precio Al Cliente Final Retornado Por BES Para Chip 30
+    [Documentation]    Consulta el precio al cliente final retornado por BES
+    ...    para el Chip 30 Prod. 2.
+    Consultar Precio Cliente Final Calculado BES Chip 30
+
+Se Genera El Ticket De Venta De Chip 30 En CAC
+    [Documentation]    Genera el ticket de venta del Chip 30 en CAC con el
+    ...    monto cobrado al cliente final.
+    Generar Ticket Venta CAC Chip 30 Con Precio Cliente
+
+Se Compara El Monto Cobrado Contra El Catalogo En UPC Y BES Para Chip 30
+    [Documentation]    Compara el monto cobrado contra el catálogo en UPC y BES
+    ...    para el Chip 30.
+    Comparar Monto Cobrado Contra Catalogo UPC Y BES Chip 30
+
+Se Ingresa Al Modulo De Cambio De SIM Prepago Desde El Canal CAC
+    [Documentation]    Ingresa al módulo de Cambio de SIM Prepago en BES CRM
+    ...    desde el canal CAC; BES despliega el flujo con catálogo de precios.
+    Ingresar Modulo Cambio SIM Prepago Desde CAC
+
+Se Captura El Numero De Linea Y Se Valida Elegibilidad
+    [Documentation]    Captura el número de línea del cliente y valida la
+    ...    elegibilidad para cambio de SIM.
+    [Arguments]    ${numero_linea}
+    Capturar Numero Linea Y Validar Elegibilidad Cambio SIM    ${numero_linea}
+
+Se Captura El ICCID Nuevo Y Motivo Estandar De Cambio De SIM
+    [Documentation]    Captura el ICCID de la SIM Universal nueva y el motivo
+    ...    de cambio estándar; BES asocia la nueva SIM a la línea.
+    [Arguments]    ${iccid_nuevo}    ${motivo}
+    Capturar ICCID Nuevo Y Motivo Estandar Cambio SIM    ${iccid_nuevo}    ${motivo}
+
+Se Consulta El Precio Cobrado Al Cliente Final Por El Cambio De SIM
+    [Documentation]    Consulta el precio cobrado al cliente final por el
+    ...    cambio de SIM Prepago en BES.
+    Consultar Precio Cambio SIM Cliente Final
+
+Se Confirma El Cambio De SIM Y Se Genera El Ticket Cambio SIM
+    [Documentation]    Confirma el cambio de SIM y genera el ticket; BES
+    ...    actualiza el ICCID asociado a la línea.
+    Confirmar Cambio SIM Y Generar Ticket Cambio SIM
+
+# ─────────────────────────── THEN ───────────────────────────
+
+BES Muestra El SKU Y Consulta El Catalogo De Precios Al Cliente Final Chip Express
+    [Documentation]    Verifica que BES muestra el SKU con precio al canal y
+    ...    consultó el catálogo de precios al cliente final.
+    [Arguments]    ${precio_canal}
+    Validar BES Muestra SKU Y Consulta Catalogo Precios Cliente Chip Express    ${precio_canal}
+
+BES Asocia La Oferta Y Dispara El Calculo Del Precio Al Cliente Chip Express
+    [Documentation]    Verifica que BES asoció la oferta al SKU y disparó el
+    ...    cálculo del precio al cliente final.
+    Validar BES Asocia Oferta Y Dispara Calculo Precio Cliente Chip Express
+
+BES Devuelve El Precio Final Al Cliente Para Chip Express
+    [Documentation]    Verifica que BES devuelve el precio final esperado al
+    ...    cliente para Chip Express.
+    [Arguments]    ${precio_cliente}
+    Validar Precio Cliente Final Devuelto Por BES Chip Express    ${precio_cliente}
+
+El Ticket Muestra El Monto Cobrado Al Cliente Final Chip Express
+    [Documentation]    Verifica que el ticket muestra el monto cobrado al
+    ...    cliente final del Chip Express.
+    [Arguments]    ${monto}
+    Validar Ticket Muestra Monto Cobrado Chip Express    ${monto}
+
+El Monto Coincide Entre BES UPC Y El Ticket Entregado Al Cliente Chip Express
+    [Documentation]    Verifica consistencia del monto entre BES, UPC y el
+    ...    ticket entregado al cliente final.
+    [Arguments]    ${monto}
+    Validar Consistencia Monto BES UPC Y Ticket Chip Express    ${monto}
+
+BES Recupera El SKU Prod 2 Con Precio Al Canal Chip 30
+    [Documentation]    Verifica que BES recupera el SKU Prod. 2 con el precio
+    ...    al canal esperado.
+    [Arguments]    ${precio_canal}
+    Validar BES Recupera SKU Prod 2 Con Precio Canal    ${precio_canal}
+
+BES Calcula El Precio Al Cliente Final Conforme Al Cuadro 1 Chip 30
+    [Documentation]    Verifica que BES asoció la oferta y calculó el precio al
+    ...    cliente final conforme al cuadro 1.
+    Validar BES Calcula Precio Cliente Final Chip 30
+
+BES Devuelve El Precio Final Al Cliente Para Chip 30
+    [Documentation]    Verifica que BES devuelve el precio final esperado al
+    ...    cliente para Chip 30.
+    [Arguments]    ${precio_cliente}
+    Validar Precio Cliente Final Devuelto Por BES Chip 30    ${precio_cliente}
+
+El Ticket Muestra El Monto Cobrado Al Cliente Final Chip 30
+    [Documentation]    Verifica que el ticket muestra el monto cobrado al
+    ...    cliente final del Chip 30.
+    [Arguments]    ${monto}
+    Validar Ticket Muestra Monto Cobrado Chip 30    ${monto}
+
+El Monto Es Consistente Entre BES UPC Y El Ticket Entregado Chip 30
+    [Documentation]    Verifica consistencia del monto entre BES, UPC y el
+    ...    ticket entregado al cliente final.
+    [Arguments]    ${monto}
+    Validar Consistencia Monto BES UPC Y Ticket Chip 30    ${monto}
+
+BES Despliega El Flujo De Cambio De SIM Prepago Con El Catalogo De Precios
+    [Documentation]    Verifica que BES desplegó el flujo de Cambio de SIM
+    ...    Prepago con el catálogo de precios al cliente.
+    Validar Modulo Cambio SIM Desplegado Con Catalogo
+
+BES Confirma Elegibilidad De La Linea Para Cambio De SIM
+    [Documentation]    Verifica que BES confirma la elegibilidad de la línea.
+    Validar Elegibilidad Linea Confirmada Cambio SIM
+
+BES Asocia La Nueva SIM A La Linea Y Calcula Precio Al Cliente Cambio SIM
+    [Documentation]    Verifica que BES asoció la nueva SIM a la línea y
+    ...    calculó el precio al cliente.
+    Validar BES Asocia Nueva SIM Y Calcula Precio Cambio SIM
+
+BES Devuelve El Precio Final Al Cliente Por El Cambio De SIM
+    [Documentation]    Verifica que BES devuelve el precio final esperado al
+    ...    cliente por el cambio de SIM conforme al cuadro 1.
+    [Arguments]    ${precio_cliente}
+    Validar Precio Cambio SIM Devuelto Por BES    ${precio_cliente}
+
+El Ticket Muestra El Cobro Y BES Actualiza El ICCID De La Linea
+    [Documentation]    Verifica que el ticket muestra el cobro indicado y BES
+    ...    actualiza el ICCID asociado a la línea.
+    [Arguments]    ${monto}
+    Validar Ticket Cambio SIM Muestra Cobro Y BES Actualiza ICCID    ${monto}
