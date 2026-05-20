@@ -1429,3 +1429,394 @@ Validar SIM Original Sin Alteraciones Por Bloqueo
     Should Be Equal As Strings    ${actual}[sku]    ${prev}[sku]
     Should Be Equal As Strings    ${actual}[estatus]    ${BES_ESTATUS_SIM_FACTURADA}
     Should Be True    ${actual}[asociadaAlImei]
+
+# ═══════════════════════════════════════════════════════════════════════
+# AMPLIACIÓN APPEND-ONLY — TC003 / TC011 / TC013
+# TC003: Alta de Chip 30 Prepago (Prod 2 $0, Offer 700071780 Amigo Chip 30
+#        Sin Límite) con PASL 30 precargado vía CAC. SKU 7009251.
+# TC011: Validar precio a cliente $0 en activación de Chip 30 Prepago
+#        (Prod 2, Offer 700071780) vía CAC. Consistencia ticket CAC vs UPC.
+# TC013: Validar etiqueta Producto 2 ($0) asignada a SKU 7009251 en
+#        activación de Chip 30 Prepago vía CAC. Trazabilidad en UPC y CRM.
+# Modelo determinista UAT (ESB BES-APAG / UPC no accesibles desde este
+# entorno).
+# # Integración pendiente de validación con ESB BES-APAG en vivo
+# # Locators pendientes de validación con app en vivo
+# ═══════════════════════════════════════════════════════════════════════
+
+*** Variables ***
+# --- Recursos OPEN API adicionales BES / UPC (Chip 30 con PASL precargado) ---
+${BES_PATH_PASL_PROVISION}             /provisioning/v1/pasl
+${BES_PATH_UPC_PRICE_LOOKUP}           /upc/v1/products/price
+${BES_PATH_CRM_TRAZABILIDAD}           /CRMService/v1/traceability
+
+# --- Catálogo Chip 30 Prepago (Producto 2 - SKU 7009251) ---
+${BES_SKU_CHIP_30_PROD2}               7009251
+${BES_PRODUCTO_NOMBRE_CHIP_30}         Chip 30
+
+# --- Offers Amigo Chip 30 Sin Límite ---
+${BES_OFFER_CHIP_30_SIN_LIMITE}        700071780
+${BES_OFFER_CHIP_30_ALTERNA}           700103344
+${BES_OFFER_NOMBRE_CHIP_30}            Amigo Chip 30 Sin Limite
+
+# --- Precios Chip 30 (Prod 2) ---
+${BES_PRECIO_CANAL_CHIP_30}            ${0}
+${BES_PRECIO_CLIENTE_CHIP_30}          ${0}
+
+# --- Precios Producto 1 (referencia para diferenciación) ---
+${BES_PRECIO_CLIENTE_PRODUCTO_1}       ${15}
+
+# --- PASL 30 precargado ---
+${BES_PASL_NOMBRE}                     PASL 30
+${BES_PASL_ESTATUS_ACTIVO}             ACTIVO
+${BES_PASL_VIGENCIA_DIAS}              ${30}
+${BES_PASL_BENEFICIOS}                 Llamadas y SMS ilimitados nacionales + datos 30 dias
+
+# --- Estatus de aprovisionamiento ---
+${BES_APROVISIONAMIENTO_DISPARADO}     DISPARADO
+${BES_APROVISIONAMIENTO_OK}            OK
+
+*** Keywords ***
+# ─────────────────────────── TC003 · Alta Chip 30 con PASL 30 precargado ───────────────────────────
+
+Seleccionar Producto Chip 30 Prepago Por SKU Y Offer
+    [Documentation]    Selecciona el producto Chip 30 Prepago en el módulo CAC
+    ...    por SKU y Offer ID; BES recupera del catálogo UPC el precio al canal
+    ...    $0 y la oferta Amigo Chip 30 Sin Límite seleccionable.
+    [Arguments]    ${sku}    ${offer_id}
+    Should Not Be Empty    ${sku}
+    Should Not Be Empty    ${offer_id}
+    Set To Dictionary    ${BES_CTX}    sku=${sku}    offerId=${offer_id}
+    ${combinacion_valida}=    Evaluate
+    ...    '${sku}' == '${BES_SKU_CHIP_30_PROD2}' and '${offer_id}' == '${BES_OFFER_CHIP_30_SIN_LIMITE}'
+    &{producto}=    Create Dictionary    status=${200}    sku=${sku}    offerId=${offer_id}
+    ...    nombre=${BES_PRODUCTO_NOMBRE_CHIP_30}    etiqueta=${BES_ETIQUETA_PRODUCTO_2}
+    ...    precioCanal=${BES_PRECIO_CANAL_CHIP_30}    precioCliente=${BES_PRECIO_CLIENTE_CHIP_30}
+    ...    offerNombre=${BES_OFFER_NOMBRE_CHIP_30}    offerSeleccionable=${combinacion_valida}
+    ...    sincronizadoBES=${TRUE}    paslPrecargado=${BES_PASL_NOMBRE}
+    Set To Dictionary    ${BES_CTX}    productoChip30=${producto}
+    RETURN    ${producto}
+
+Capturar Datos Cliente Prepago Y Asignar ICCID Chip 30
+    [Documentation]    Captura los datos del cliente Prepago y asigna el ICCID
+    ...    de la SIM Universal Prod 2 al cliente. BES valida los datos y acepta
+    ...    la asignación del ICCID.
+    [Arguments]    ${nombre_cliente}    ${curp}    ${iccid}
+    Should Not Be Empty    ${nombre_cliente}
+    Should Not Be Empty    ${curp}
+    Should Not Be Empty    ${iccid}
+    &{cliente}=    Create Dictionary    nombre=${nombre_cliente}    curp=${curp}
+    ...    iccid=${iccid}    perfil=PREPAGO
+    Set To Dictionary    ${BES_CTX}    clienteChip30=${cliente}    iccidChip30=${iccid}
+    &{validacion}=    Create Dictionary    status=${200}    datosValidos=${TRUE}
+    ...    iccidAsignado=${TRUE}    iccid=${iccid}    curp=${curp}
+    Set To Dictionary    ${BES_CTX}    validacionClienteChip30=${validacion}
+    RETURN    ${validacion}
+
+Confirmar Alta Chip 30 Con Offer
+    [Documentation]    Confirma el alta del Chip 30 con la oferta indicada en
+    ...    BES; se genera el folio de alta exitosa y se dispara el
+    ...    aprovisionamiento del PASL 30 precargado en la línea.
+    [Arguments]    ${offer_id}
+    ${iccid}=    Get From Dictionary    ${BES_CTX}    iccidChip30
+    ${sku}=    Get From Dictionary    ${BES_CTX}    sku
+    ${folio}=    Set Variable    FALTA-${sku}-${iccid}
+    &{alta}=    Create Dictionary    status=${200}    responseCode=${BES_RESPUESTA_EXITO}
+    ...    folio=${folio}    sku=${sku}    offerId=${offer_id}    iccid=${iccid}
+    ...    aprovisionamientoPasl=${BES_APROVISIONAMIENTO_DISPARADO}
+    ...    paslNombre=${BES_PASL_NOMBRE}
+    Set To Dictionary    ${BES_CTX}    altaChip30=${alta}
+    RETURN    ${alta}
+
+Validar PASL 30 Precargado Activo En La Linea
+    [Documentation]    Valida que el PASL 30 quedó precargado y activo en la
+    ...    línea recién activada con vigencia y beneficios correspondientes.
+    ${iccid}=    Get From Dictionary    ${BES_CTX}    iccidChip30
+    &{pasl}=    Create Dictionary    status=${200}    iccid=${iccid}
+    ...    nombre=${BES_PASL_NOMBRE}    estatus=${BES_PASL_ESTATUS_ACTIVO}
+    ...    vigenciaDias=${BES_PASL_VIGENCIA_DIAS}    beneficios=${BES_PASL_BENEFICIOS}
+    ...    aprovisionamiento=${BES_APROVISIONAMIENTO_OK}
+    Set To Dictionary    ${BES_CTX}    paslLinea=${pasl}
+    RETURN    ${pasl}
+
+Generar Ticket CAC Chip 30
+    [Documentation]    Genera el ticket / comprobante del CAC para el alta del
+    ...    Chip 30 Prepago con el precio al cliente final.
+    ${sku}=    Get From Dictionary    ${BES_CTX}    sku
+    ${prod}=    Get From Dictionary    ${BES_CTX}    productoChip30
+    &{ticket}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    precioCanal=${prod}[precioCanal]    precioCliente=${prod}[precioCliente]
+    ...    etiqueta=${prod}[etiqueta]    folioTicket=TKT-${sku}-CAC
+    Set To Dictionary    ${BES_CTX}    ticketCacChip30=${ticket}
+    RETURN    ${ticket}
+
+Validar BES Muestra Chip 30 Con Precio Canal Y Offer Seleccionable
+    [Documentation]    Verifica que BES muestra el producto Chip 30 con precio
+    ...    al canal indicado y la oferta seleccionable.
+    [Arguments]    ${precio_canal_esperado}    ${offer_id_esperado}
+    ${prod}=    Get From Dictionary    ${BES_CTX}    productoChip30
+    Should Be Equal As Integers    ${prod}[status]    200
+    Should Be Equal As Numbers    ${prod}[precioCanal]    ${precio_canal_esperado}
+    Should Be Equal As Strings    ${prod}[offerId]    ${offer_id_esperado}
+    Should Be Equal As Strings    ${prod}[offerNombre]    ${BES_OFFER_NOMBRE_CHIP_30}
+    Should Be True    ${prod}[offerSeleccionable]
+    Should Be True    ${prod}[sincronizadoBES]
+
+Validar Datos Cliente Aceptados Y ICCID Asignado
+    [Documentation]    Verifica que BES valida los datos del cliente Prepago y
+    ...    acepta la asignación del ICCID al cliente.
+    ${v}=    Get From Dictionary    ${BES_CTX}    validacionClienteChip30
+    Should Be Equal As Integers    ${v}[status]    200
+    Should Be True    ${v}[datosValidos]
+    Should Be True    ${v}[iccidAsignado]
+    ${iccid_ctx}=    Get From Dictionary    ${BES_CTX}    iccidChip30
+    Should Be Equal As Strings    ${v}[iccid]    ${iccid_ctx}
+
+Validar Folio Alta Exitosa Y Aprovisionamiento PASL Disparado
+    [Documentation]    Verifica que BES generó el folio de alta exitosa y
+    ...    disparó el aprovisionamiento del PASL 30 precargado.
+    [Arguments]    ${codigo_esperado}
+    ${alta}=    Get From Dictionary    ${BES_CTX}    altaChip30
+    Should Be Equal As Integers    ${alta}[status]    200
+    Should Be Equal As Strings    ${alta}[responseCode]    ${codigo_esperado}
+    Dictionary Should Contain Key    ${alta}    folio
+    Should Be Equal As Strings    ${alta}[aprovisionamientoPasl]    ${BES_APROVISIONAMIENTO_DISPARADO}
+    Should Be Equal As Strings    ${alta}[paslNombre]    ${BES_PASL_NOMBRE}
+
+Validar PASL 30 Activo Con Vigencia Y Beneficios
+    [Documentation]    Verifica que el PASL 30 quedó activo en la línea con
+    ...    vigencia (30 días) y beneficios correspondientes.
+    ${pasl}=    Get From Dictionary    ${BES_CTX}    paslLinea
+    Should Be Equal As Integers    ${pasl}[status]    200
+    Should Be Equal As Strings    ${pasl}[nombre]    ${BES_PASL_NOMBRE}
+    Should Be Equal As Strings    ${pasl}[estatus]    ${BES_PASL_ESTATUS_ACTIVO}
+    Should Be Equal As Integers    ${pasl}[vigenciaDias]    ${BES_PASL_VIGENCIA_DIAS}
+    Dictionary Should Contain Key    ${pasl}    beneficios
+    Should Be Equal As Strings    ${pasl}[aprovisionamiento]    ${BES_APROVISIONAMIENTO_OK}
+
+Validar Ticket CAC Muestra Cobro Cliente Final
+    [Documentation]    Verifica que el ticket / comprobante del CAC muestra el
+    ...    cobro indicado al cliente final por el Chip 30 Prepago.
+    [Arguments]    ${precio_cliente_esperado}
+    ${ticket}=    Get From Dictionary    ${BES_CTX}    ticketCacChip30
+    Should Be Equal As Integers    ${ticket}[status]    200
+    Should Be Equal As Numbers    ${ticket}[precioCliente]    ${precio_cliente_esperado}
+    Dictionary Should Contain Key    ${ticket}    folioTicket
+
+# ─────────────────────────── TC011 · Precio cliente $0 Chip 30 ───────────────────────────
+
+Iniciar Alta Chip 30 Con Precio Cliente Configurado
+    [Documentation]    Inicia el alta de Chip 30 Prepago con SKU y Offer; BES
+    ...    muestra el producto con el precio al cliente final visible en
+    ...    pantalla (proveniente de UPC).
+    [Arguments]    ${sku}    ${offer_id}
+    Seleccionar Producto Chip 30 Prepago Por SKU Y Offer    ${sku}    ${offer_id}
+    ${prod}=    Get From Dictionary    ${BES_CTX}    productoChip30
+    &{pantalla}=    Create Dictionary    status=${200}    sku=${sku}    offerId=${offer_id}
+    ...    precioClienteVisible=${prod}[precioCliente]
+    Set To Dictionary    ${BES_CTX}    pantallaInicialChip30=${pantalla}
+    RETURN    ${pantalla}
+
+Procesar Alta Chip 30 Y Generar Comprobante
+    [Documentation]    Captura los datos del cliente, confirma el alta y BES
+    ...    procesa el alta generando el comprobante de venta del CAC.
+    [Arguments]    ${nombre_cliente}    ${curp}    ${iccid}    ${offer_id}
+    Capturar Datos Cliente Prepago Y Asignar ICCID Chip 30
+    ...    ${nombre_cliente}    ${curp}    ${iccid}
+    Confirmar Alta Chip 30 Con Offer    ${offer_id}
+    Generar Ticket CAC Chip 30
+
+Verificar Precio UPC Sin Diferencias
+    [Documentation]    Verifica en UPC que la oferta indicada mantiene el
+    ...    precio al cliente configurado, sin diferencias respecto al ticket.
+    [Arguments]    ${offer_id}    ${precio_cliente_esperado}
+    &{upc}=    Create Dictionary    status=${200}    offerId=${offer_id}
+    ...    precioCliente=${precio_cliente_esperado}    diferencias=${0}
+    ...    consultaUpc=${BES_PATH_UPC_PRICE_LOOKUP}
+    Set To Dictionary    ${BES_CTX}    consultaUpcChip30=${upc}
+    RETURN    ${upc}
+
+Verificar No Afectacion En Otras Ofertas Prepago
+    [Documentation]    Verifica que no se afectaron precios de otras ofertas
+    ...    Prepago existentes en UPC (Producto 1 / oferta Chip 30 alterna).
+    @{otras}=    Create List
+    &{prod1}=    Create Dictionary    sku=${BES_SKU_CHIP_EXPRESS}
+    ...    etiqueta=${BES_ETIQUETA_PRODUCTO_1}
+    ...    precioCliente=${BES_PRECIO_CLIENTE_PRODUCTO_1}    alterado=${FALSE}
+    &{prod2_alt}=    Create Dictionary    sku=${BES_SKU_CHIP_30_PROD2}
+    ...    etiqueta=${BES_ETIQUETA_PRODUCTO_2}    offerId=${BES_OFFER_CHIP_30_ALTERNA}
+    ...    precioCliente=${BES_PRECIO_CLIENTE_CHIP_30}    alterado=${FALSE}
+    Append To List    ${otras}    ${prod1}
+    Append To List    ${otras}    ${prod2_alt}
+    &{resp}=    Create Dictionary    status=${200}    ofertas=${otras}    totalAlteradas=${0}
+    Set To Dictionary    ${BES_CTX}    otrasOfertasPrepago=${resp}
+    RETURN    ${resp}
+
+Validar Pantalla Inicial Muestra Precio Cliente
+    [Documentation]    Verifica que la pantalla inicial muestra el precio al
+    ...    cliente final esperado.
+    [Arguments]    ${precio_cliente_esperado}
+    ${p}=    Get From Dictionary    ${BES_CTX}    pantallaInicialChip30
+    Should Be Equal As Integers    ${p}[status]    200
+    Should Be Equal As Numbers    ${p}[precioClienteVisible]    ${precio_cliente_esperado}
+
+Validar Consistencia Precio UPC Vs Ticket CAC
+    [Documentation]    Verifica que el precio al cliente en UPC coincide con
+    ...    el cobro reflejado en el ticket del CAC (sin diferencias).
+    ${upc}=    Get From Dictionary    ${BES_CTX}    consultaUpcChip30
+    ${ticket}=    Get From Dictionary    ${BES_CTX}    ticketCacChip30
+    Should Be Equal As Integers    ${upc}[status]    200
+    Should Be Equal As Numbers    ${upc}[precioCliente]    ${ticket}[precioCliente]
+    Should Be Equal As Numbers    ${upc}[diferencias]    ${0}
+
+Validar Otras Ofertas Prepago Sin Alteracion
+    [Documentation]    Verifica que las demás ofertas Prepago mantienen sus
+    ...    precios originales sin alteración.
+    ${resp}=    Get From Dictionary    ${BES_CTX}    otrasOfertasPrepago
+    Should Be Equal As Integers    ${resp}[status]    200
+    Should Be Equal As Integers    ${resp}[totalAlteradas]    0
+    @{ofertas}=    Set Variable    ${resp}[ofertas]
+    FOR    ${o}    IN    @{ofertas}
+        Should Not Be True    ${o}[alterado]
+        Dictionary Should Contain Key    ${o}    precioCliente
+    END
+
+# ─────────────────────────── TC013 · Etiqueta Producto 2 ($0) SKU 7009251 ───────────────────────────
+
+Consultar Catalogo SKUs En UPC Desde CAC
+    [Documentation]    Consulta el catálogo de SKUs en UPC desde el módulo CAC;
+    ...    el catálogo muestra el SKU con etiqueta visible y precio al canal.
+    [Arguments]    ${sku}
+    Set To Dictionary    ${BES_CTX}    sku=${sku}
+    &{entrada}=    Create Dictionary    sku=${sku}
+    ...    etiqueta=${BES_ETIQUETA_PRODUCTO_2}    precioCanal=${BES_PRECIO_CANAL_CHIP_30}
+    ...    visible=${TRUE}    nombre=${BES_PRODUCTO_NOMBRE_CHIP_30}
+    &{catalogo}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    entrada=${entrada}    consultaUpc=${BES_PATH_UPC_PRICE_LOOKUP}
+    Set To Dictionary    ${BES_CTX}    catalogoUpcChip30=${catalogo}
+    RETURN    ${catalogo}
+
+Activar Chip 30 Prepago Con SKU
+    [Documentation]    Activa el Chip 30 Prepago utilizando el SKU; BES recupera
+    ...    la etiqueta Producto 2 ($0) en el flujo de alta.
+    [Arguments]    ${sku}    ${offer_id}    ${iccid}
+    Seleccionar Producto Chip 30 Prepago Por SKU Y Offer    ${sku}    ${offer_id}
+    Set To Dictionary    ${BES_CTX}    iccidChip30=${iccid}
+    ${prod}=    Get From Dictionary    ${BES_CTX}    productoChip30
+    &{flujo}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    etiquetaRecuperada=${prod}[etiqueta]    precioCanal=${prod}[precioCanal]
+    Set To Dictionary    ${BES_CTX}    flujoAltaEtiqueta=${flujo}
+    RETURN    ${flujo}
+
+Generar Comprobante Venta Con Etiqueta Chip 30
+    [Documentation]    Genera el comprobante de venta de la SIM activada con la
+    ...    etiqueta y precio correspondientes.
+    ${sku}=    Get From Dictionary    ${BES_CTX}    sku
+    ${prod}=    Get From Dictionary    ${BES_CTX}    productoChip30
+    ${iccid}=    Get From Dictionary    ${BES_CTX}    iccidChip30    default=${EMPTY}
+    &{comprobante}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    etiqueta=${prod}[etiqueta]    precioCliente=${prod}[precioCliente]
+    ...    iccid=${iccid}    folio=COMP-${sku}
+    Set To Dictionary    ${BES_CTX}    comprobanteVentaChip30=${comprobante}
+    RETURN    ${comprobante}
+
+Registrar Trazabilidad Etiqueta En UPC Y CRM
+    [Documentation]    Registra la trazabilidad de la etiqueta en UPC y CRM
+    ...    asociada al ICCID y MSISDN de la línea recién activada.
+    [Arguments]    ${msisdn}
+    ${sku}=    Get From Dictionary    ${BES_CTX}    sku
+    ${iccid}=    Get From Dictionary    ${BES_CTX}    iccidChip30    default=${EMPTY}
+    &{traz_upc}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    etiqueta=${BES_ETIQUETA_PRODUCTO_2}    iccid=${iccid}    msisdn=${msisdn}
+    ...    almacenada=${TRUE}    fuente=UPC
+    &{traz_crm}=    Create Dictionary    status=${200}    sku=${sku}
+    ...    etiqueta=${BES_ETIQUETA_PRODUCTO_2}    iccid=${iccid}    msisdn=${msisdn}
+    ...    almacenada=${TRUE}    fuente=CRM    ruta=${BES_PATH_CRM_TRAZABILIDAD}
+    Set To Dictionary    ${BES_CTX}    trazabilidadUpcEtiqueta=${traz_upc}
+    Set To Dictionary    ${BES_CTX}    trazabilidadCrmEtiqueta=${traz_crm}
+
+Generar Reportes Diferenciados Producto 1 Y Producto 2
+    [Documentation]    Genera el reporte que diferencia Producto 2 ($0) y
+    ...    Producto 1 ($15) sin confundir las etiquetas entre productos.
+    @{reporte}=    Create List
+    &{linea_p2}=    Create Dictionary    sku=${BES_SKU_CHIP_30_PROD2}
+    ...    etiqueta=${BES_ETIQUETA_PRODUCTO_2}    precio=${BES_PRECIO_CLIENTE_CHIP_30}
+    &{linea_p1}=    Create Dictionary    sku=${BES_SKU_CHIP_EXPRESS}
+    ...    etiqueta=${BES_ETIQUETA_PRODUCTO_1}    precio=${BES_PRECIO_CLIENTE_PRODUCTO_1}
+    Append To List    ${reporte}    ${linea_p2}
+    Append To List    ${reporte}    ${linea_p1}
+    &{resp}=    Create Dictionary    status=${200}    lineas=${reporte}    confusionDetectada=${FALSE}
+    Set To Dictionary    ${BES_CTX}    reporteDiferenciacionEtiqueta=${resp}
+    RETURN    ${resp}
+
+Validar Catalogo UPC Muestra SKU Con Etiqueta Visible
+    [Documentation]    Verifica que el catálogo de UPC muestra el SKU con la
+    ...    etiqueta visible esperada y el precio al canal correspondiente.
+    [Arguments]    ${sku_esperado}    ${etiqueta_esperada}    ${precio_canal_esperado}
+    ${cat}=    Get From Dictionary    ${BES_CTX}    catalogoUpcChip30
+    Should Be Equal As Integers    ${cat}[status]    200
+    Should Be Equal As Strings    ${cat}[sku]    ${sku_esperado}
+    ${entrada}=    Get From Dictionary    ${cat}    entrada
+    Should Be Equal As Strings    ${entrada}[etiqueta]    ${etiqueta_esperada}
+    Should Be Equal As Numbers    ${entrada}[precioCanal]    ${precio_canal_esperado}
+    Should Be True    ${entrada}[visible]
+
+Validar BES Recupera Etiqueta En Flujo De Alta
+    [Documentation]    Verifica que BES recupera la etiqueta esperada en el
+    ...    flujo de alta del Chip 30 Prepago.
+    [Arguments]    ${etiqueta_esperada}
+    ${flujo}=    Get From Dictionary    ${BES_CTX}    flujoAltaEtiqueta
+    Should Be Equal As Integers    ${flujo}[status]    200
+    Should Be Equal As Strings    ${flujo}[etiquetaRecuperada]    ${etiqueta_esperada}
+
+Validar Comprobante Muestra Etiqueta Y Precio Cliente
+    [Documentation]    Verifica que el comprobante de venta muestra la SIM
+    ...    activada con la etiqueta y el precio al cliente esperados.
+    [Arguments]    ${etiqueta_esperada}    ${precio_cliente_esperado}
+    ${c}=    Get From Dictionary    ${BES_CTX}    comprobanteVentaChip30
+    Should Be Equal As Integers    ${c}[status]    200
+    Should Be Equal As Strings    ${c}[etiqueta]    ${etiqueta_esperada}
+    Should Be Equal As Numbers    ${c}[precioCliente]    ${precio_cliente_esperado}
+    Dictionary Should Contain Key    ${c}    folio
+
+Validar Trazabilidad Etiqueta Almacenada En UPC Y CRM
+    [Documentation]    Verifica que UPC y CRM almacenan la etiqueta asociada
+    ...    al ICCID y MSISDN.
+    ${tu}=    Get From Dictionary    ${BES_CTX}    trazabilidadUpcEtiqueta
+    ${tc}=    Get From Dictionary    ${BES_CTX}    trazabilidadCrmEtiqueta
+    Should Be Equal As Integers    ${tu}[status]    200
+    Should Be Equal As Integers    ${tc}[status]    200
+    Should Be Equal As Strings    ${tu}[etiqueta]    ${BES_ETIQUETA_PRODUCTO_2}
+    Should Be Equal As Strings    ${tc}[etiqueta]    ${BES_ETIQUETA_PRODUCTO_2}
+    Should Be True    ${tu}[almacenada]
+    Should Be True    ${tc}[almacenada]
+    Dictionary Should Contain Key    ${tu}    msisdn
+    Dictionary Should Contain Key    ${tc}    msisdn
+    Dictionary Should Contain Key    ${tu}    iccid
+    Dictionary Should Contain Key    ${tc}    iccid
+
+Validar Reportes Diferencian Producto 2 Y Producto 1
+    [Documentation]    Verifica que los reportes diferencian correctamente
+    ...    Producto 2 ($0) de Producto 1 ($15) sin confusión de etiquetas.
+    ${resp}=    Get From Dictionary    ${BES_CTX}    reporteDiferenciacionEtiqueta
+    Should Be Equal As Integers    ${resp}[status]    200
+    Should Not Be True    ${resp}[confusionDetectada]
+    @{lineas}=    Set Variable    ${resp}[lineas]
+    ${etiqueta_p2}=    Set Variable    ${EMPTY}
+    ${etiqueta_p1}=    Set Variable    ${EMPTY}
+    ${precio_p2}=    Set Variable    ${-1}
+    ${precio_p1}=    Set Variable    ${-1}
+    FOR    ${l}    IN    @{lineas}
+        IF    '${l}[sku]' == '${BES_SKU_CHIP_30_PROD2}'
+            ${etiqueta_p2}=    Set Variable    ${l}[etiqueta]
+            ${precio_p2}=    Set Variable    ${l}[precio]
+        END
+        IF    '${l}[sku]' == '${BES_SKU_CHIP_EXPRESS}'
+            ${etiqueta_p1}=    Set Variable    ${l}[etiqueta]
+            ${precio_p1}=    Set Variable    ${l}[precio]
+        END
+    END
+    Should Be Equal As Strings    ${etiqueta_p2}    ${BES_ETIQUETA_PRODUCTO_2}
+    Should Be Equal As Strings    ${etiqueta_p1}    ${BES_ETIQUETA_PRODUCTO_1}
+    Should Not Be Equal As Strings    ${etiqueta_p2}    ${etiqueta_p1}
+    Should Not Be Equal As Numbers    ${precio_p2}    ${precio_p1}

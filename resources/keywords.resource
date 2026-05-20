@@ -543,3 +543,164 @@ El Registro Original Conserva La Asociación SIM IMEI Sin Alteraciones
     [Documentation]    Verifica que la SIM original no se ve afectada por el
     ...    intento de segunda facturación.
     Validar SIM Original Sin Alteraciones Por Bloqueo
+
+# ═══════════════════════════════════════════════════════════════════════
+# AMPLIACIÓN APPEND-ONLY — Orquestación TC003 / TC011 / TC013
+# Alta de Chip 30 Prepago con PASL 30 precargado vía CAC, validación de
+# precio a cliente $0 y validación de etiqueta Producto 2 ($0) sobre el
+# SKU 7009251. Sin selectores ni endpoints: delegan en BesPage.
+# ═══════════════════════════════════════════════════════════════════════
+
+# ─────────────────────────── WHEN ───────────────────────────
+
+Se Selecciona El Producto Chip 30 Prepago Con SKU Y Offer ID
+    [Documentation]    Selecciona el producto Chip 30 Prepago con SKU y Offer ID
+    ...    en el módulo CAC.
+    [Arguments]    ${sku}    ${offer_id}
+    Seleccionar Producto Chip 30 Prepago Por SKU Y Offer    ${sku}    ${offer_id}
+
+Se Capturan Los Datos Del Cliente Prepago Y Se Asigna El ICCID De La SIM Universal Prod 2
+    [Documentation]    Captura los datos del cliente Prepago y asigna el ICCID
+    ...    de la SIM Universal Prod 2.
+    [Arguments]    ${nombre_cliente}    ${curp}    ${iccid}
+    Capturar Datos Cliente Prepago Y Asignar ICCID Chip 30    ${nombre_cliente}    ${curp}    ${iccid}
+
+Se Confirma El Alta Del Chip 30 Con La Oferta
+    [Documentation]    Confirma el alta del Chip 30 Prepago con la oferta indicada.
+    [Arguments]    ${offer_id}
+    Confirmar Alta Chip 30 Con Offer    ${offer_id}
+
+Se Valida Que El PASL 30 Quedó Precargado Y Activo En La Línea
+    [Documentation]    Valida que el PASL 30 quedó precargado y activo en la
+    ...    línea recién activada.
+    Validar PASL 30 Precargado Activo En La Linea
+
+Se Genera El Ticket Del CAC Para El Chip 30 Prepago
+    [Documentation]    Genera el ticket / comprobante del CAC para el alta del
+    ...    Chip 30 Prepago.
+    Generar Ticket CAC Chip 30
+
+Se Inicia El Alta Del Chip 30 Prepago Con SKU Y Offer
+    [Documentation]    Inicia el alta del Chip 30 Prepago en CAC con SKU y Offer
+    ...    mostrando el precio al cliente final visible en pantalla.
+    [Arguments]    ${sku}    ${offer_id}
+    Iniciar Alta Chip 30 Con Precio Cliente Configurado    ${sku}    ${offer_id}
+
+Se Procesa El Alta Del Chip 30 Y Se Genera El Comprobante De Venta
+    [Documentation]    Captura los datos del cliente, confirma el alta y BES
+    ...    genera el comprobante de venta del CAC.
+    [Arguments]    ${nombre_cliente}    ${curp}    ${iccid}    ${offer_id}
+    Procesar Alta Chip 30 Y Generar Comprobante
+    ...    ${nombre_cliente}    ${curp}    ${iccid}    ${offer_id}
+
+Se Consulta En UPC El Precio De La Oferta Chip 30 Prepago
+    [Documentation]    Consulta en UPC el precio al cliente final de la oferta
+    ...    Chip 30 Prepago para validar consistencia con el ticket del CAC.
+    [Arguments]    ${offer_id}    ${precio_cliente}
+    Verificar Precio UPC Sin Diferencias    ${offer_id}    ${precio_cliente}
+
+Se Verifica Que No Se Afectaron Precios De Otras Ofertas Prepago
+    [Documentation]    Verifica que las demás ofertas Prepago en UPC mantienen
+    ...    sus precios originales sin alteración.
+    Verificar No Afectacion En Otras Ofertas Prepago
+
+Se Consulta El Catálogo De SKUs En UPC Desde El Módulo CAC
+    [Documentation]    Consulta el catálogo de SKUs en UPC desde el módulo CAC.
+    [Arguments]    ${sku}
+    Consultar Catalogo SKUs En UPC Desde CAC    ${sku}
+
+Se Activa El Chip 30 Prepago Utilizando El SKU
+    [Documentation]    Activa el Chip 30 Prepago utilizando el SKU; BES recupera
+    ...    la etiqueta en el flujo de alta.
+    [Arguments]    ${sku}    ${offer_id}    ${iccid}
+    Activar Chip 30 Prepago Con SKU    ${sku}    ${offer_id}    ${iccid}
+
+Se Genera El Comprobante De Venta Del Chip 30 Prepago Con La Etiqueta
+    [Documentation]    Genera el comprobante de venta del Chip 30 Prepago con la
+    ...    etiqueta y el precio al cliente.
+    Generar Comprobante Venta Con Etiqueta Chip 30
+
+Se Registra La Trazabilidad De La Etiqueta En UPC Y CRM
+    [Documentation]    Registra la trazabilidad de la etiqueta en UPC y CRM
+    ...    asociada al ICCID y MSISDN de la línea.
+    [Arguments]    ${msisdn}
+    Registrar Trazabilidad Etiqueta En UPC Y CRM    ${msisdn}
+
+Se Generan Los Reportes Diferenciados De Producto 1 Y Producto 2
+    [Documentation]    Genera los reportes con la diferenciación de Producto 2
+    ...    ($0) y Producto 1 ($15).
+    Generar Reportes Diferenciados Producto 1 Y Producto 2
+
+# ─────────────────────────── THEN ───────────────────────────
+
+BES Muestra El Producto Chip 30 Con Precio Al Canal Y Oferta Seleccionable
+    [Documentation]    Verifica que BES muestra el producto Chip 30 con precio
+    ...    al canal y la oferta Amigo Chip 30 Sin Límite seleccionable.
+    [Arguments]    ${precio_canal}    ${offer_id}
+    Validar BES Muestra Chip 30 Con Precio Canal Y Offer Seleccionable
+    ...    ${precio_canal}    ${offer_id}
+
+BES Valida Los Datos Del Cliente Y Acepta La Asignación Del ICCID
+    [Documentation]    Verifica que BES valida los datos del cliente Prepago y
+    ...    acepta la asignación del ICCID.
+    Validar Datos Cliente Aceptados Y ICCID Asignado
+
+BES Genera El Folio De Alta Exitosa Y Dispara El Aprovisionamiento Del PASL 30
+    [Documentation]    Verifica que BES generó el folio de alta exitosa y
+    ...    disparó el aprovisionamiento del PASL 30 precargado.
+    [Arguments]    ${codigo}
+    Validar Folio Alta Exitosa Y Aprovisionamiento PASL Disparado    ${codigo}
+
+La Línea Muestra El PASL 30 Activo Con Vigencia Y Beneficios
+    [Documentation]    Verifica que la línea muestra el PASL 30 activo con
+    ...    vigencia y beneficios correspondientes.
+    Validar PASL 30 Activo Con Vigencia Y Beneficios
+
+El Ticket Del CAC Muestra El Cobro Indicado Al Cliente Final
+    [Documentation]    Verifica que el ticket del CAC muestra el cobro indicado
+    ...    al cliente final.
+    [Arguments]    ${precio_cliente}
+    Validar Ticket CAC Muestra Cobro Cliente Final    ${precio_cliente}
+
+La Pantalla Inicial Del Chip 30 Muestra El Precio Al Cliente Final
+    [Documentation]    Verifica que la pantalla inicial muestra el precio al
+    ...    cliente final esperado.
+    [Arguments]    ${precio_cliente}
+    Validar Pantalla Inicial Muestra Precio Cliente    ${precio_cliente}
+
+UPC Confirma El Precio Al Cliente Alineado Al Ticket Del CAC
+    [Documentation]    Verifica que el precio en UPC coincide con el cobro en
+    ...    el ticket del CAC sin diferencias.
+    Validar Consistencia Precio UPC Vs Ticket CAC
+
+Las Demás Ofertas Prepago Mantienen Sus Precios Originales Sin Alteración
+    [Documentation]    Verifica que las demás ofertas Prepago no fueron alteradas.
+    Validar Otras Ofertas Prepago Sin Alteracion
+
+El Catálogo UPC Muestra El SKU Con La Etiqueta Visible
+    [Documentation]    Verifica que el catálogo de UPC muestra el SKU con la
+    ...    etiqueta visible y el precio al canal correspondiente.
+    [Arguments]    ${sku}    ${etiqueta}    ${precio_canal}
+    Validar Catalogo UPC Muestra SKU Con Etiqueta Visible    ${sku}    ${etiqueta}    ${precio_canal}
+
+BES Recupera La Etiqueta En El Flujo De Alta
+    [Documentation]    Verifica que BES recupera la etiqueta en el flujo de
+    ...    alta del Chip 30 Prepago.
+    [Arguments]    ${etiqueta}
+    Validar BES Recupera Etiqueta En Flujo De Alta    ${etiqueta}
+
+El Comprobante Muestra La SIM Activada Con La Etiqueta Y Precio
+    [Documentation]    Verifica que el comprobante muestra la SIM activada con
+    ...    la etiqueta y precio esperados.
+    [Arguments]    ${etiqueta}    ${precio_cliente}
+    Validar Comprobante Muestra Etiqueta Y Precio Cliente    ${etiqueta}    ${precio_cliente}
+
+UPC Y CRM Almacenan La Etiqueta Asociada Al ICCID Y MSISDN
+    [Documentation]    Verifica que UPC y CRM almacenan la etiqueta asociada
+    ...    al ICCID y MSISDN.
+    Validar Trazabilidad Etiqueta Almacenada En UPC Y CRM
+
+Los Reportes Diferencian Correctamente Producto 2 De Producto 1
+    [Documentation]    Verifica que los reportes diferencian correctamente
+    ...    Producto 2 ($0) de Producto 1 ($15).
+    Validar Reportes Diferencian Producto 2 Y Producto 1
