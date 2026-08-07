@@ -102,3 +102,70 @@ Entonces El Conteo Total De Imagenes Se Mantiene Consistente
 Finalizar Prueba
     [Documentation]    Cierra el navegador/app al terminar la prueba.
     Close Browser
+
+# =======================================================================
+# APPEND-ONLY — Keywords de negocio nuevos (no modificar los anteriores)
+# =======================================================================
+
+# ---- TC009: Paginación incremental y comportamiento al final del listado ----
+Cuando El Usuario Realiza Scroll Incremental Hacia El Final
+    [Documentation]    Fuerza la carga de lotes incrementales avanzando hacia el final del listado.
+    Hacer Scroll Incremental Cargando Lotes
+
+Entonces Los Lotes De Imagenes Se Cargan De Forma Fluida
+    [Documentation]    Valida que la Galería sigue renderizando imágenes de forma estable durante el scroll.
+    Validar Galeria Sin Regresiones
+
+Cuando El Usuario Alcanza El Ultimo Elemento Del Listado
+    [Documentation]    Continúa el scroll hasta alcanzar el último elemento del listado.
+    Hacer Scroll Hasta El Ultimo Elemento Del Listado
+
+Entonces La Galeria Muestra El Ultimo Elemento Y Detiene La Carga
+    [Documentation]    Valida el último elemento, el fin de listado y captura el conteo de referencia.
+    Validar Ultimo Elemento Y Fin De Listado
+    ${conteo}=    Contar Imagenes En Galeria
+    Set Test Variable    ${CONTEO_FIN_LISTADO}    ${conteo}
+
+Cuando El Usuario Intenta Scroll Adicional Mas Alla Del Final
+    [Documentation]    Fuerza scroll adicional más allá del último elemento del listado.
+    Intentar Scroll Adicional Mas Alla Del Final
+
+Entonces El Fin Del Listado Se Mantiene Estable Sin Cargas Infinitas
+    [Documentation]    Valida que no hay cargas infinitas ni pantallas en blanco y el conteo se mantiene.
+    Validar Fin De Listado Estable Sin Cargas Infinitas    ${CONTEO_FIN_LISTADO}
+
+Entonces La Aplicacion Permanece Estable Y Responde A La Interaccion
+    [Documentation]    Valida que la app sigue respondiendo sin freezes ni crashes.
+    Validar Aplicacion Estable Y Respondiendo
+
+# ---- TC010: Recuperación de imágenes desde caché ----
+Cuando El Usuario Carga Un Conjunto De Imagenes Con Scroll
+    [Documentation]    Carga imágenes con scroll y guarda su identificación como referencia de la sesión previa.
+    Hacer Scroll Incremental Cargando Lotes
+    ${identificadores}=    Capturar Identificadores De Imagenes Visibles
+    Set Test Variable    ${IMAGENES_SESION_PREVIA}    ${identificadores}
+
+Entonces Las Imagenes Quedan Almacenadas En La Cache Local
+    [Documentation]    Valida que se cargaron imágenes para almacenar en caché.
+    Should Not Be Empty    ${IMAGENES_SESION_PREVIA}
+    ...    No se cargaron imágenes que puedan almacenarse en la caché local
+
+Cuando El Usuario Cierra Por Completo La Aplicacion
+    [Documentation]    Cierra la app por completo sin dejar la sesión activa en segundo plano.
+    Cerrar Aplicacion Por Completo
+
+Y El Usuario Reabre La Aplicacion Y La Seccion Fotos
+    [Documentation]    Reabre la app, autentica de nuevo y navega a la Sección Fotos.
+    Reabrir Aplicacion Claro Drive
+    Ingresar Credenciales De Usuario    ${USUARIO_PRUEBA}    ${PASSWORD_PRUEBA}
+    Validar Sesion Iniciada
+    Abrir Seccion Fotos
+
+Entonces Las Miniaturas Se Muestran De Inmediato Desde Cache
+    [Documentation]    Valida la recuperación inmediata de miniaturas desde caché sin espacios en blanco.
+    Validar Miniaturas Recuperadas Desde Cache
+
+Entonces Las Imagenes Coinciden Con La Sesion Previa
+    [Documentation]    Compara contenido y orden de las imágenes recuperadas contra la sesión previa.
+    ${identificadores_actuales}=    Capturar Identificadores De Imagenes Visibles
+    Comparar Conjuntos De Imagenes    ${IMAGENES_SESION_PREVIA}    ${identificadores_actuales}

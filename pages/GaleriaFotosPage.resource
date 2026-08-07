@@ -139,3 +139,110 @@ Validar Ausencia De Duplicados
     [Arguments]    ${lista_identificadores}
     ${sin_duplicados}=    Remove Duplicates    ${lista_identificadores}
     Lists Should Be Equal    ${lista_identificadores}    ${sin_duplicados}    Se encontraron imágenes duplicadas en la Galería
+
+# =======================================================================
+# APPEND-ONLY — Variables nuevas (no modificar las anteriores)
+# Locators pendientes de validación con app en vivo (app nativa iOS)
+# =======================================================================
+
+*** Variables ***
+# ---- Paginación y fin de listado (TC009) ----
+${GALERIA_ULTIMO_ELEMENTO}              css:.galeria-grid [data-role='foto-item']:last-child
+${GALERIA_INDICADOR_FIN_LISTADO}        id:galeria_fin_listado
+${GALERIA_MENSAJE_SIN_MAS_IMAGENES}     css:#galeria_fin_listado [data-role='mensaje-fin']
+${GALERIA_PANTALLA_EN_BLANCO}           css:.galeria-grid[data-estado='vacio']
+
+# ---- Caché y recuperación de imágenes (TC010) ----
+${GALERIA_MINIATURA_IMAGEN}             css:[data-role='foto-item'] img[data-role='miniatura']
+${GALERIA_MINIATURA_DESDE_CACHE}        css:[data-role='foto-item'] img[data-origen='cache']
+
+*** Keywords ***
+# =======================================================================
+# APPEND-ONLY — Keywords nuevos (no modificar los anteriores)
+# =======================================================================
+
+# ---- TC009: Paginación incremental y fin de listado ----
+Hacer Scroll Incremental Cargando Lotes
+    [Documentation]    Realiza scroll incremental forzando la carga de lotes sucesivos de imágenes.
+    [Arguments]    ${iteraciones}=5
+    FOR    ${indice}    IN RANGE    ${iteraciones}
+        Execute Javascript    document.querySelector("#galeria_grid").scrollBy(0, 1200)
+        Sleep    1s
+        Wait Until Element Is Not Visible    ${GALERIA_INDICADOR_CARGA}    timeout=20s
+    END
+
+Hacer Scroll Hasta El Ultimo Elemento Del Listado
+    [Documentation]    Repite scroll hasta que aparece el indicador de fin de listado o el último elemento.
+    FOR    ${intento}    IN RANGE    30
+        ${fin}=    Run Keyword And Return Status    Element Should Be Visible    ${GALERIA_INDICADOR_FIN_LISTADO}
+        Exit For Loop If    ${fin}
+        Execute Javascript    document.querySelector("#galeria_grid").scrollTo(0, document.querySelector("#galeria_grid").scrollHeight)
+        Sleep    1s
+        Wait Until Element Is Not Visible    ${GALERIA_INDICADOR_CARGA}    timeout=20s
+    END
+    Wait Until Element Is Visible    ${GALERIA_ULTIMO_ELEMENTO}    timeout=15s
+
+Validar Ultimo Elemento Y Fin De Listado
+    [Documentation]    Verifica que el último elemento es visible y que la Galería detuvo la solicitud de lotes.
+    Wait Until Element Is Visible    ${GALERIA_ULTIMO_ELEMENTO}          timeout=15s
+    Wait Until Element Is Visible    ${GALERIA_INDICADOR_FIN_LISTADO}    timeout=15s
+    Wait Until Element Is Not Visible    ${GALERIA_INDICADOR_CARGA}      timeout=10s
+
+Intentar Scroll Adicional Mas Alla Del Final
+    [Documentation]    Fuerza scroll adicional más allá del último elemento del listado.
+    Execute Javascript    document.querySelector("#galeria_grid").scrollBy(0, 3000)
+    Sleep    2s
+
+Validar Fin De Listado Estable Sin Cargas Infinitas
+    [Documentation]    Verifica que no hay cargas infinitas, ni pantalla en blanco, y el conteo se mantiene estable.
+    [Arguments]    ${conteo_referencia}
+    Page Should Not Contain Element      ${GALERIA_PANTALLA_EN_BLANCO}
+    Wait Until Element Is Not Visible    ${GALERIA_INDICADOR_CARGA}          timeout=10s
+    Element Should Be Visible            ${GALERIA_INDICADOR_FIN_LISTADO}
+    ${conteo_actual}=    Contar Imagenes En Galeria
+    Should Be Equal As Integers    ${conteo_actual}    ${conteo_referencia}
+    ...    La Galería continuó solicitando lotes más allá del final del listado
+
+Validar Aplicacion Estable Y Respondiendo
+    [Documentation]    Verifica que la app sigue estable y la interfaz responde a la interacción tras el fin del listado.
+    Wait Until Element Is Visible    ${GALERIA_CONTENEDOR_CUADRICULA}    timeout=15s
+    Page Should Contain Element      ${GALERIA_IMAGEN_ITEM}
+    Execute Javascript    document.querySelector("#galeria_grid").scrollBy(0, -600)
+    Sleep    1s
+    ${cantidad}=    Contar Imagenes En Galeria
+    Should Be True    ${cantidad} > 0
+    ...    La interfaz de la Galería no responde tras alcanzar el final del listado
+
+# ---- TC010: Caché y recuperación de imágenes ----
+Capturar Identificadores De Imagenes Visibles
+    [Documentation]    Retorna la lista de identificadores (src) de las miniaturas visibles, preservando el orden.
+    ${elementos}=    Get WebElements    ${GALERIA_MINIATURA_IMAGEN}
+    ${lista}=        Create List
+    FOR    ${elemento}    IN    @{elementos}
+        ${identificador}=    Get Element Attribute    ${elemento}    src
+        Append To List    ${lista}    ${identificador}
+    END
+    RETURN    ${lista}
+
+Cerrar Aplicacion Por Completo
+    [Documentation]    Cierra por completo la app/navegador simulando el cierre desde el administrador de aplicaciones.
+    Close Browser
+
+Reabrir Aplicacion Claro Drive
+    [Documentation]    Reabre la app/navegador tras el cierre completo.
+    Open Browser    ${URL_APP_CLARO_DRIVE}    browser=chrome
+    Maximize Browser Window
+
+Validar Miniaturas Recuperadas Desde Cache
+    [Documentation]    Verifica que las miniaturas se muestran de inmediato desde caché, sin pantalla en blanco.
+    Wait Until Element Is Visible      ${GALERIA_MINIATURA_IMAGEN}    timeout=10s
+    Page Should Not Contain Element    ${GALERIA_PANTALLA_EN_BLANCO}
+    ${desde_cache}=    Get Element Count    ${GALERIA_MINIATURA_DESDE_CACHE}
+    Should Be True    ${desde_cache} > 0
+    ...    Las miniaturas no se recuperaron desde la caché local
+
+Comparar Conjuntos De Imagenes
+    [Documentation]    Verifica que las imágenes recuperadas coinciden en contenido y orden con la sesión previa.
+    [Arguments]    ${lista_previa}    ${lista_actual}
+    Lists Should Be Equal    ${lista_previa}    ${lista_actual}
+    ...    Las imágenes recuperadas desde caché no coinciden en contenido y orden con la sesión previa
