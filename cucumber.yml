@@ -1,0 +1,3 @@
+default: --publish-quiet
+ia: --tags @PruebaGeneradaIA
+dry: --dry-run --tags @PruebaGeneradaIA
