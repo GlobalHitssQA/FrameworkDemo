@@ -1,0 +1,33 @@
+name: Cucumber Ruby dry-run
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'features/**'
+      - 'Gemfile'
+      - 'Gemfile.lock'
+      - 'cucumber.yml'
+      - '.github/workflows/cucumber-dry-run.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cucumber-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Validate Cucumber definitions
+        run: bundle exec cucumber --dry-run
