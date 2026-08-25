@@ -1,0 +1,42 @@
+name: Cucumber Ruby dry-run
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'features/**'
+      - 'Gemfile'
+      - 'Gemfile.lock'
+      - 'cucumber.yml'
+      - '.github/workflows/cucumber-dry-run.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cucumber-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Validate only AI-generated features from this PR
+        shell: bash
+        run: |
+          FEATURE_FILES="$(git diff --name-only "$(git merge-base HEAD origin/master)" HEAD -- 'features/*.feature')"
+          if [ -z "$FEATURE_FILES" ]; then
+            echo "No hay features generadas en este PR"
+            exit 1
+          fi
+          bundle exec cucumber $FEATURE_FILES --dry-run --tags @PruebaGeneradaIA
