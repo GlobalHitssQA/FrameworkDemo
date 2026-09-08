@@ -1,0 +1,70 @@
+name: Cucumber Ruby dry-run
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'features/**'
+      - 'Gemfile'
+      - 'Gemfile.lock'
+      - 'cucumber.yml'
+      - '.github/workflows/cucumber-dry-run.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cucumber-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Validate only AI-generated features from this PR
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Base de comparación: merge-base con la rama destino del PR.
+          BASE_REF="origin/${GITHUB_BASE_REF:-master}"
+          git fetch --no-tags --depth=1 origin "${GITHUB_BASE_REF:-master}" || true
+          BASE_SHA="$(git merge-base HEAD "${BASE_REF}" 2>/dev/null || echo "")"
+
+          # Archivos .feature modificados (ACMR), con salida delimitada por NUL para
+          # soportar espacios y caracteres especiales en los nombres.
+          changed=()
+          if [ -n "${BASE_SHA}" ]; then
+            while IFS= read -r -d '' path; do
+              changed+=("$path")
+            done < <(git diff -z --name-only --diff-filter=ACMR "${BASE_SHA}" HEAD -- 'features/*.feature')
+          fi
+
+          # Conserva sólo las features etiquetadas con @PruebaGeneradaIA.
+          feature_files=()
+          for f in "${changed[@]:-}"; do
+            [ -n "$f" ] || continue
+            [ -f "$f" ] || continue
+            if grep -qF '@PruebaGeneradaIA' "$f"; then
+              feature_files+=("$f")
+            fi
+          done
+
+          if [ "${#feature_files[@]}" -eq 0 ]; then
+            echo "No hay features nuevas o modificadas con @PruebaGeneradaIA en este PR; nada que validar."
+            exit 0
+          fi
+
+          printf 'Validando (dry-run):\n'
+          printf '  - %s\n' "${feature_files[@]}"
+          bundle exec cucumber "${feature_files[@]}" --dry-run --tags @PruebaGeneradaIA

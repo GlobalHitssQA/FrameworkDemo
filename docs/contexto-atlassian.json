@@ -1,0 +1,237 @@
+{
+  "version": 1,
+  "source": "Query-Jira-ClaroVideo",
+  "principal": {
+    "key": "ADTCL-141",
+    "summary": "Validación por PIN para Grabaciones en los flujos de EPG",
+    "issueType": "Technical Epic",
+    "status": "QA Validation",
+    "description": "MVP Técnico: Mostrar al usuario la pantalla para ingresar PIN de seguridad cuando intente realizar las siguientes acciones (Aplica para eventos bloqueados con temporalidad presente, pasado y futuro): Reproducir canal bloqueado, Realizar grabaciones, Cancelar grabaciones, Añadir o quitar de favoritos. Una vez el usuario capture el PIN de seguridad en un canal, no se deberá solicitar nuevamente al realizar alguna acción, a menos que cambie de canal. En caso de que el servicio de validación de PIN no esté disponible o presente un fallo técnico, se debe activar un flujo especial de contingencia. | Requerimientos No Funcionales: (1) El flujo debe funcionar correctamente en todos los dispositivos soportados. (2) El flujo de validación de PIN debe estar desacoplado de la lógica de negocio principal, para facilitar su mantenimiento o actualización futura. (3) Todos los textos mostrados en la pantalla de PIN deben estar externalizados mediante llaves de traducción y traducidos según la configuración regional del usuario. | Sprint: ADTCL-Sprint41 (cerrado). | Parent: TBRFRE-89 (Technical Brief: FE: Validación por PIN para Grabaciones en los flujos de EPG). | País: Todos.",
+    "acceptanceCriteria": "1. Visualización de la pantalla para ingresar PIN de seguridad al reproducir, grabar o cancelar grabaciones de eventos de canales bloqueados. 2. Visualización de la pantalla para ingresar PIN de seguridad al añadir o eliminar canales a favoritos. 3. Asegurar que no se solicite el PIN de seguridad al desbloquear un canal mientras el usuario se encuentre en él y no cambie de canal."
+  },
+  "issues": [
+    {
+      "key": "ADTCL-141",
+      "summary": "Validación por PIN para Grabaciones en los flujos de EPG",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-142",
+      "summary": "Feature 01: Validar PIN de seguridad en eventos de canales bloqueados",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-143",
+      "summary": "Feature 02: Solicitar PIN de seguridad para grabar eventos Futuros de canales bloqueados",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-144",
+      "summary": "Feature 03: Solicitar PIN de seguridad para grabar eventos Presentes de canales bloqueados (Desde inicio/Desde Ahora)",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-145",
+      "summary": "Feature 04: Solicitar PIN de seguridad para grabar Series / Episodios de eventos presentes en canales bloqueados",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-146",
+      "summary": "Feature 05: Solicitar PIN de seguridad para cancelar grabación de Series / Episodios en canales bloqueados",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-147",
+      "summary": "Feature 06: Solicitar PIN de seguridad para grabar eventos pasados de canales bloqueados",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-148",
+      "summary": "Feature 07: Solicitar PIN de seguridad para cancelar la grabación en curso de un evento pasado",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-149",
+      "summary": "Feature 08: Solicitar PIN de seguridad para cancelar la grabación de un evento futuro",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-150",
+      "summary": "Feature 09: Solicitar PIN de seguridad para cancelar la grabación en curso de un evento presente",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-151",
+      "summary": "Feature 10: Solicitar PIN de seguridad para grabar series / episodios de eventos pasados en canales bloqueados",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-152",
+      "summary": "Feature 11: Solicitar PIN de seguridad para grabar series / episodios de eventos futuros en canales bloqueados",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-153",
+      "summary": "Feature 12: Solicitar PIN de seguridad para Añadir/Eliminar de favoritos un canal bloqueado (Tv en vivo)",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-154",
+      "summary": "Feature 13: Alerta por Fallo de validación de estado (TV en vivo)",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-155",
+      "summary": "Feature 14: Envio de notificación al desbloquear un canal",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-156",
+      "summary": "Feature 15: Visualización del estado de grabación de eventos en la EPG",
+      "comments": []
+    },
+    {
+      "key": "ADTCL-157",
+      "summary": "Feature 16: Llaves dinámicas de la pantalla de PIN para pantallas grandes",
+      "comments": []
+    },
+    {
+      "key": "QA-3077",
+      "summary": "(3)ADT/FTV | 7.0.0.b4+ADTCL-141 | RELEASE | ADTCL-141 Validación por PIN para Grabaciones en los flujos de EPG",
+      "comments": []
+    },
+    {
+      "key": "QA-3078",
+      "summary": "FIRETV | 7.0.0.b4+ADTCL-141 | RELEASE | ADTCL-141 Validación por PIN para Grabaciones en los flujos de EPG",
+      "comments": []
+    }
+  ],
+  "relations": [
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-142",
+      "type": "child",
+      "clarifies": "Flujo base de validación de PIN al seleccionar eventos en canales bloqueados desde la EPG (TV en vivo)"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-143",
+      "type": "child",
+      "clarifies": "Flujo de solicitud de PIN para grabación de eventos futuros (tag MAS TARDE) en canales bloqueados"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-144",
+      "type": "child",
+      "clarifies": "Flujo de grabación de eventos en curso con selección de inicio (desde inicio o desde ahora) y validación de PIN en canales bloqueados"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-145",
+      "type": "child",
+      "clarifies": "Flujo de PIN para grabar series/episodios de eventos presentes en canales bloqueados"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-146",
+      "type": "child",
+      "clarifies": "Flujo de PIN para cancelar grabaciones de series/episodios en canales bloqueados"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-147",
+      "type": "child",
+      "clarifies": "Flujo de PIN para grabar eventos pasados (tag YA EMITIDO) en canales bloqueados con timeshift disponible"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-148",
+      "type": "child",
+      "clarifies": "Flujo de PIN para cancelar grabación en curso de evento pasado en canal bloqueado"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-149",
+      "type": "child",
+      "clarifies": "Flujo de PIN para cancelar grabación programada de evento futuro en canal bloqueado"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-150",
+      "type": "child",
+      "clarifies": "Flujo de PIN para cancelar grabación en curso de evento presente en canal bloqueado"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-151",
+      "type": "child",
+      "clarifies": "Flujo de PIN para grabar series/episodios de eventos pasados en canales bloqueados"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-152",
+      "type": "child",
+      "clarifies": "Flujo de PIN para grabar series/episodios de eventos futuros en canales bloqueados"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-153",
+      "type": "child",
+      "clarifies": "Flujo de PIN para gestión de favoritos (añadir/eliminar) de canales bloqueados desde TV en vivo (mini EPG y full EPG)"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-154",
+      "type": "child",
+      "clarifies": "Flujo de contingencia/error cuando el servicio de validación de PIN no está disponible para canales con contenido sensible"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-155",
+      "type": "child",
+      "clarifies": "Flujo de notificación al desbloquear un canal mediante PIN de seguridad"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-156",
+      "type": "child",
+      "clarifies": "Flujo de visualización del estado de grabación (íconos) en la guía de programación EPG"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "ADTCL-157",
+      "type": "child",
+      "clarifies": "Especificación de las llaves dinámicas de UI de la pantalla de PIN diferenciadas por acción (grabar, cancelar, eliminar, reproducir, favoritos)"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "QA-3077",
+      "type": "child",
+      "clarifies": "Tarea de validación QA de release en dispositivos ADT y FireTV para la versión que incluye ADTCL-141"
+    },
+    {
+      "source": "ADTCL-141",
+      "target": "QA-3078",
+      "type": "child",
+      "clarifies": "Tarea de validación QA de release en dispositivos FireTV para la versión que incluye ADTCL-141"
+    }
+  ],
+  "attachments": [],
+  "links": [],
+  "confluencePages": [],
+  "warnings": [
+    "ADTCL-141 es de tipo Technical Epic. Conforme a la regla 1.1, se consultaron obligatoriamente sus 16 Technical Stories hijas (ADTCL-142 a ADTCL-157) y los demás issues hijos directos.",
+    "El campo 'description' del Epic ADTCL-141 está vacío en Jira. El contenido de description y acceptanceCriteria del principal fue extraído de los campos personalizados 'MVP Técnico', 'Criterio de Aceptación' y 'Requerimientos No Funcionales'.",
+    "Las descripciones de las Technical Stories (ADTCL-142 a ADTCL-157) están en formato BDD/Gherkin (Feature/Background/Scenario). Su contenido fue tomado como guía y contexto; no como fuente de verdad absoluta para casos de prueba sin contraste contra el requerimiento.",
+    "Los links del Epic principal (CLAUP-3, CLAUP-26, CLAUP-27, CLAUP-28, CLAUP-12, GCECL-5) son dependencias FF (Finish-to-Finish) de tipo Technical Epic y fueron excluidos de 'relacionadas' conforme a la regla 8.",
+    "AUTO-4700 (Tarea de automatización 'Análisis de versión y ambiente') fue excluido de 'relacionadas' por no aportar contexto funcional directo para la matriz de prueba.",
+    "Los QA Bugs en estado 'QA Validation' (ADTCL-2553, ADTCL-2555, ADTCL-2561, ADTCL-2563) y 'Analysis' (ADTCL-2548, ADTCL-2556) están activos; representan defectos conocidos a considerar en la estrategia de prueba.",
+    "Versión de referencia para pruebas: 10.1.1b1 (BERC, GT). Versión de release: 7.1.0.b1+ADTCL-141+ADTCL-308+ADTCL-311+ADTCL-313. Plataformas: AndroidTV (ADRTV) y FireTV (FTV). País: Todos (primariamente Guatemala en los bugs encontrados)."
+  ],
+  "stats": {
+    "source": "MCP CLARO VIDEO AGUSTIN",
+    "relatedIssues": 18,
+    "maxRelatedIssues": 60,
+    "clarificationSources": 0
+  }
+}
